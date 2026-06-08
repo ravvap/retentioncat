@@ -1,0 +1,1363 @@
+{
+  "info": {
+    "_postman_id": "tip-cm-retention-v1",
+    "name": "TIP CM Retention – Categories & Sub-Categories",
+    "description": "FDIC Treasury Integrated Platform – Content Manager Retention API (R1 Lean MVP)\n\nCovers all Category (US-1.1–US-1.5, US-1.12) and Sub-Category (US-1.6–US-1.11) transactions.\n\n## Setup\n1. Set `baseUrl` to `http://localhost:8080` (or your env URL).\n2. In **dev profile** use HTTP Basic: set `adminUser`/`adminPass` (default: `admin`/`admin`).\n3. Run the **Category – Happy Path** folder top-to-bottom; IDs are captured automatically via test scripts.\n4. Then run the **Sub-Category – Happy Path** folder.\n5. Error-scenario folders can be run independently — they carry their own static payloads.\n\n## Variable auto-capture\n- `categoryId` — captured from Create Category 201 response\n- `secondCategoryId` — captured from Create Second Category (used for Move tests)\n- `subCategoryId` — captured from Create Sub-Category 201 response\n\nCONTROLLED // FDIC INTERNAL ONLY",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",       "value": "http://localhost:8080",  "type": "string" },
+    { "key": "adminUser",     "value": "admin",                  "type": "string" },
+    { "key": "adminPass",     "value": "admin",                  "type": "string" },
+    { "key": "categoryId",    "value": "",                       "type": "string" },
+    { "key": "secondCategoryId", "value": "",                    "type": "string" },
+    { "key": "subCategoryId", "value": "",                       "type": "string" }
+  ],
+  "auth": {
+    "type": "basic",
+    "basic": [
+      { "key": "username", "value": "{{adminUser}}", "type": "string" },
+      { "key": "password", "value": "{{adminPass}}", "type": "string" }
+    ]
+  },
+  "item": [
+
+    {
+      "name": "01 – Categories Happy Path",
+      "description": "Run top-to-bottom. Each request captures the ID needed by the next.",
+      "item": [
+
+        {
+          "name": "US-1.1 Create Category → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Location header present', () => pm.response.to.have.header('Location'));",
+                  "pm.test('Status is draft', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('draft');",
+                  "  pm.collectionVariables.set('categoryId', body.id);",
+                  "  console.log('Captured categoryId:', body.id);",
+                  "});",
+                  "pm.test('code is uppercase', () => {",
+                  "  pm.expect(pm.response.json().code).to.eql('EXAMINATION_RECORDS');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"EXAMINATION_RECORDS\",\n  \"name\": \"Examination Records\",\n  \"description\": \"FDIC examination-related records requiring long-term retention per NARA schedule.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.1 Create Second Category (for Move tests) → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('secondCategoryId', body.id);",
+                  "console.log('Captured secondCategoryId:', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"FINANCIAL_RECORDS\",\n  \"name\": \"Financial Records\",\n  \"description\": \"Wire transfers, treasury statements, and quarterly reconciliations.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.12 Get Hierarchy (both draft) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('categories array present', () => {",
+                  "  pm.expect(pm.response.json().categories).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/hierarchy", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","hierarchy"] }
+          }
+        },
+
+        {
+          "name": "US-1.12 Get Hierarchy – filter by status=draft → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All categories are draft', () => {",
+                  "  const cats = pm.response.json().categories;",
+                  "  cats.forEach(c => pm.expect(c.status).to.eql('draft'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/hierarchy?status=draft",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","hierarchy"],
+              "query": [{ "key": "status", "value": "draft" }]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.12 Get Hierarchy – search by name → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Search returns results', () => {",
+                  "  pm.expect(pm.response.json().categories.length).to.be.gte(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/hierarchy?search=examination",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","hierarchy"],
+              "query": [{ "key": "search", "value": "examination" }]
+            }
+          }
+        },
+
+        {
+          "name": "GET Category by ID → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Correct ID returned', () => {",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('categoryId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}"] }
+          }
+        },
+
+        {
+          "name": "GET List Categories → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Array returned', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        },
+
+        {
+          "name": "GET List Categories – filter status=draft → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All draft', () => {",
+                  "  pm.response.json().forEach(c => pm.expect(c.status).to.eql('draft'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/categories?status=draft",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"],
+              "query": [{ "key": "status", "value": "draft" }]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.3 Edit Category (name + description) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Name updated', () => {",
+                  "  pm.expect(pm.response.json().name).to.eql('Examination Records (Updated)');",
+                  "});",
+                  "pm.test('Status unchanged after edit', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('draft');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Examination Records (Updated)\",\n  \"description\": \"Updated description: FDIC examination records – expanded per policy revision 2026-Q1.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.2 Activate Category → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is now active', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Activating for Q2 2026 retention rollout.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.2 Activate Second Category → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is active', () => pm.expect(pm.response.json().status).to.eql('active'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.3 Edit Active Category – description only → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Still active after edit', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Editing description while category is active – allowed in any status.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.4 Deactivate Category → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is inactive', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('inactive');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Retiring this taxonomy area for Q3 consolidation.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}/deactivate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}","deactivate"] }
+          }
+        },
+
+        {
+          "name": "US-1.2 Reactivate (inactive → active) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is active again', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Reactivating after policy review.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.4 Deactivate Again (pre-delete) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is inactive', () => pm.expect(pm.response.json().status).to.eql('inactive'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Final deactivation before deletion.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}/deactivate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}","deactivate"] }
+          }
+        },
+
+        {
+          "name": "US-1.5 Delete Category (no prior content) → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204 No Content', () => pm.response.to.have.status(204));",
+                  "pm.test('Body is empty', () => pm.expect(pm.response.text()).to.eql(''));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{categoryId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "02 – Categories Error Scenarios",
+      "description": "Independent error-path tests. Each uses inline static data – no dependency on happy-path variables.",
+      "item": [
+
+        {
+          "name": "US-1.1 Duplicate code → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message mentions code', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('BANK_CLOSURE_RECORDS');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"BANK_CLOSURE_RECORDS\",\n  \"name\": \"Bank Closure Records Duplicate\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.1 Invalid code format (lowercase) → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Field error on code', () => {",
+                  "  const body = pm.response.json();",
+                  "  const codeError = (body.fieldErrors || []).find(e => e.field === 'code');",
+                  "  pm.expect(codeError).to.not.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"invalid-lowercase\",\n  \"name\": \"Some Category\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.1 Missing required fields → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Field errors present', () => {",
+                  "  pm.expect(pm.response.json().fieldErrors.length).to.be.gte(1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.3 Attempt to change code → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message mentions immutable', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('immutable');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"NEW_CODE_ATTEMPT\",\n  \"name\": \"New Name\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.2 Activate already-active category → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Message mentions already active', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('already active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.4 Deactivate non-active (draft) category → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/categories/00000000-0000-0000-0000-000000000099/deactivate",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","00000000-0000-0000-0000-000000000099","deactivate"]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.5 Delete active category (not inactive) → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Message mentions deactivate first', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('Deactivate');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "GET Category – not found → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/categories/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.1 Non-admin creates category → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "auditor", "type": "string" },
+                { "key": "password", "value": "auditor", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"FORBIDDEN_TEST\",\n  \"name\": \"Should not create\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "03 – Sub-Categories Happy Path",
+      "description": "Requires secondCategoryId (active) from folder 01. Run top-to-bottom.",
+      "item": [
+
+        {
+          "name": "US-1.6 Create Sub-Category → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Location header present', () => pm.response.to.have.header('Location'));",
+                  "pm.test('Status is draft', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('draft');",
+                  "  pm.expect(body.hasEverHeldContent).to.be.false;",
+                  "  pm.collectionVariables.set('subCategoryId', body.id);",
+                  "  console.log('Captured subCategoryId:', body.id);",
+                  "});",
+                  "pm.test('Retention duration set correctly', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.retentionDurationValue).to.eql(7);",
+                  "  pm.expect(body.retentionDurationUnit).to.eql('years');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": \"{{secondCategoryId}}\",\n  \"code\": \"INTERNAL_FINDINGS\",\n  \"name\": \"Internal Findings\",\n  \"description\": \"Internal examination findings retained for 7 years.\",\n  \"retentionDurationValue\": 7,\n  \"retentionDurationUnit\": \"years\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories"] }
+          }
+        },
+
+        {
+          "name": "GET Sub-Category by ID → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Correct ID', () => {",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('subCategoryId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "GET Sub-Categories by Category → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Array returned', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "pm.test('At least one sub-category', () => {",
+                  "  pm.expect(pm.response.json().length).to.be.gte(1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}/sub-categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}","sub-categories"] }
+          }
+        },
+
+        {
+          "name": "GET Sub-Categories by Category – filter status=draft → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All draft', () => {",
+                  "  pm.response.json().forEach(sc => pm.expect(sc.status).to.eql('draft'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}/sub-categories?status=draft",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}","sub-categories"],
+              "query": [{ "key": "status", "value": "draft" }]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.8 Edit Sub-Category name only (no retention change) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Name updated', () => {",
+                  "  pm.expect(pm.response.json().name).to.eql('Internal Findings (Revised)');",
+                  "});",
+                  "pm.test('Retention unchanged', () => {",
+                  "  pm.expect(pm.response.json().retentionDurationValue).to.eql(7);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Internal Findings (Revised)\",\n  \"description\": \"Updated description after editorial review.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.8 Edit Sub-Category retention with reason → 202 (cascade queued)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('Retention value updated', () => {",
+                  "  pm.expect(pm.response.json().retentionDurationValue).to.eql(10);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"retentionDurationValue\": 10,\n  \"retentionDurationUnit\": \"years\",\n  \"reason\": \"FDIC schedule update FY26-Q2: retention extended from 7y to 10y per regulatory guidance memo dated 2026-04-10.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.7 Activate Sub-Category → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is active', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Activating for Q2 2026 classification intake.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.12 Hierarchy – verify Sub-Category appears active → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Active sub-category visible in hierarchy', () => {",
+                  "  const cats = pm.response.json().categories;",
+                  "  const cat = cats.find(c => c.id === pm.collectionVariables.get('secondCategoryId'));",
+                  "  if (cat) {",
+                  "    const sc = cat.subCategories.find(s => s.id === pm.collectionVariables.get('subCategoryId'));",
+                  "    if (sc) pm.expect(sc.status).to.eql('active');",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/hierarchy?status=active", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","hierarchy"], "query": [{ "key": "status", "value": "active" }] }
+          }
+        },
+
+        {
+          "name": "US-1.9 Move Sub-Category to different parent → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('categoryId is now the target', () => {",
+                  "  pm.expect(pm.response.json().categoryId).to.not.eql(pm.collectionVariables.get('secondCategoryId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// NOTE: This test moves the sub-cat from secondCategoryId.",
+                  "// It will only make sense if a separate active target category exists.",
+                  "// Adjust targetCategoryId in the body to a valid active Category UUID.",
+                  "console.log('Ensure target categoryId in body is a valid active Category.');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetCategoryId\": \"REPLACE_WITH_ANOTHER_ACTIVE_CATEGORY_UUID\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/move", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","move"] }
+          }
+        },
+
+        {
+          "name": "US-1.10 Deactivate Sub-Category → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is inactive', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('inactive');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Retiring this sub-category; no new classifications to be taken.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/deactivate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","deactivate"] }
+          }
+        },
+
+        {
+          "name": "US-1.7 Reactivate Sub-Category (inactive → active) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is active again', () => pm.expect(pm.response.json().status).to.eql('active'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Reactivating after review.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.10 Deactivate again (pre-delete) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is inactive', () => pm.expect(pm.response.json().status).to.eql('inactive'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"comment\": \"Final deactivation before delete.\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/deactivate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","deactivate"] }
+          }
+        },
+
+        {
+          "name": "US-1.11 Delete Sub-Category (never held content) → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204 No Content', () => pm.response.to.have.status(204));",
+                  "pm.test('Body is empty', () => pm.expect(pm.response.text()).to.eql(''));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "04 – Sub-Categories Error Scenarios",
+      "description": "Independent error-path tests for Sub-Category endpoints.",
+      "item": [
+
+        {
+          "name": "US-1.6 Create Sub-Cat – inactive parent → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message mentions not active', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('not active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": \"00000000-0000-0000-0000-000000000099\",\n  \"code\": \"TEST_SUBCAT\",\n  \"name\": \"Test Sub\",\n  \"retentionDurationValue\": 5,\n  \"retentionDurationUnit\": \"years\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.6 Create Sub-Cat – missing retentionDurationValue → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Field error on retentionDurationValue', () => {",
+                  "  const errs = pm.response.json().fieldErrors || [];",
+                  "  pm.expect(errs.some(e => e.field === 'retentionDurationValue')).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": \"{{secondCategoryId}}\",\n  \"code\": \"MISSING_RETENTION\",\n  \"name\": \"Missing Retention Value\",\n  \"retentionDurationUnit\": \"years\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.6 Create Sub-Cat – invalid retentionDurationUnit → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": \"{{secondCategoryId}}\",\n  \"code\": \"BAD_UNIT\",\n  \"name\": \"Bad Unit Test\",\n  \"retentionDurationValue\": 5,\n  \"retentionDurationUnit\": \"decades\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories"] }
+          }
+        },
+
+        {
+          "name": "US-1.8 Edit retention without reason → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message mentions reason', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('reason');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"retentionDurationValue\": 15\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.8 Edit Sub-Cat – code in body → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message mentions immutable', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('immutable');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"NEW_CODE\",\n  \"name\": \"Renamed\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.7 Activate already-active Sub-Category → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Message mentions already active', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('already active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/activate", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","activate"] }
+          }
+        },
+
+        {
+          "name": "US-1.10 Deactivate already-inactive Sub-Category → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/sub-categories/00000000-0000-0000-0000-000000000099/deactivate",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","00000000-0000-0000-0000-000000000099","deactivate"]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.11 Delete Sub-Cat that has_ever_held_content=true → 409 (hard block)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('No header escape mentioned', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('no confirmation-header escape');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/sub-categories/8f9a2c3d-0000-0000-0000-000000000002",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","8f9a2c3d-0000-0000-0000-000000000002"]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.9 Move Sub-Cat to inactive target → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message mentions target not active', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('not active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"targetCategoryId\": \"00000000-0000-0000-0000-000000000099\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories/{{subCategoryId}}/move", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","{{subCategoryId}}","move"] }
+          }
+        },
+
+        {
+          "name": "GET Sub-Category – not found → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/retention/sub-categories/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories","00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+
+        {
+          "name": "US-1.6 Non-admin creates sub-category → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "auditor", "type": "string" },
+                { "key": "password", "value": "auditor", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": \"{{secondCategoryId}}\",\n  \"code\": \"FORBIDDEN\",\n  \"name\": \"Forbidden Sub\",\n  \"retentionDurationValue\": 5,\n  \"retentionDurationUnit\": \"years\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/sub-categories", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","sub-categories"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "05 – US-1.5 Delete Category WITH has_ever_held_content",
+      "description": "Demonstrates the X-Confirmation-Code: DELETE CATEGORY header gate. Run against a Category that has had content classified into its Sub-Categories (has_ever_held_content=true).",
+      "item": [
+
+        {
+          "name": "US-1.5 Delete – has_ever_held_content, NO header → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Message mentions X-Confirmation-Code', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('X-Confirmation-Code');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.5 Delete – has_ever_held_content, WRONG header value → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Confirmation-Code", "value": "DELETE" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}"] }
+          }
+        },
+
+        {
+          "name": "US-1.5 Delete – has_ever_held_content, CORRECT header → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Confirmation-Code", "value": "DELETE CATEGORY" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/retention/categories/{{secondCategoryId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","retention","categories","{{secondCategoryId}}"] }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
