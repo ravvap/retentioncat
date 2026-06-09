@@ -1,0 +1,148 @@
+erDiagram
+    retention_categories ||--o{ retention_sub_categories : "contains"
+    retention_sub_categories ||--o{ retention_documents : "classifies"
+    retention_sub_categories ||--o{ retention_table_onboarding : "defaults classification"
+    
+    retention_upstream_module ||--o{ retention_table_onboarding : "registers"
+    retention_table_onboarding ||--o{ retention_auto_classification : "tracks rows"
+    retention_bucket ||--o{ retention_auto_classification : "assigns retention"
+
+    retention_categories {
+        UUID id PK "default gen_random_uuid()"
+        VARCHAR_64 code UK "NOT NULL, UNIQUE"
+        VARCHAR_255 name "NOT NULL"
+        TEXT description
+        VARCHAR_16 status "NOT NULL, DEFAULT 'draft', CHECK(active, draft, inactive)"
+        BOOLEAN has_ever_held_content "NOT NULL, DEFAULT FALSE"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 created_by "NOT NULL"
+        TIMESTAMPTZ updated_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 updated_by "NOT NULL"
+        TIMESTAMPTZ deleted_at
+        VARCHAR_255 deleted_by
+    }
+
+    retention_sub_categories {
+        UUID id PK "default gen_random_uuid()"
+        UUID category_id FK "NOT NULL, REFERENCES txn.retention_categories(id)"
+        VARCHAR_64 code "NOT NULL"
+        VARCHAR_255 name "NOT NULL"
+        TEXT description
+        INTEGER retention_duration_value "NOT NULL, CHECK(> 0)"
+        VARCHAR_16 retention_duration_unit "NOT NULL, CHECK(days, months, years)"
+        VARCHAR_16 status "NOT NULL, DEFAULT 'draft', CHECK(active, draft, inactive)"
+        BOOLEAN has_ever_held_content "NOT NULL, DEFAULT FALSE"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 created_by "NOT NULL"
+        TIMESTAMPTZ updated_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 updated_by "NOT NULL"
+        TIMESTAMPTZ deleted_at
+        VARCHAR_255 deleted_by
+    }
+
+    retention_documents {
+        UUID id PK "default gen_random_uuid()"
+        UUID sub_category_id FK "NOT NULL, REFERENCES txn.retention_sub_categories(id)"
+        VARCHAR_64 source_system "NOT NULL"
+        VARCHAR_255 source_reference "NOT NULL"
+        VARCHAR_512 filename "NOT NULL"
+        BIGINT size_bytes "NOT NULL, CHECK(> 0)"
+        CHAR_64 sha256 "NOT NULL"
+        VARCHAR_255 uploaded_by_user_id "NOT NULL"
+        DATE basis_date "NOT NULL"
+        DATE eligibility_date
+        TIMESTAMPTZ retention_evaluated_at
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 created_by "NOT NULL"
+        TIMESTAMPTZ updated_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 updated_by "NOT NULL"
+        TIMESTAMPTZ deleted_at
+        VARCHAR_255 deleted_by
+    }
+
+    retention_table_onboarding {
+        UUID id PK "default gen_random_uuid()"
+        UUID upstream_module_id FK "NOT NULL, REFERENCES txn.upstream_module(id)"
+        VARCHAR_255 schema_name "NOT NULL"
+        VARCHAR_255 table_name "NOT NULL"
+        VARCHAR_8 classification_pattern "NOT NULL, DEFAULT 'B', CHECK(B)"
+        TEXT_ARRAY primary_key_columns "NOT NULL"
+        VARCHAR_255 basis_date_column "NOT NULL"
+        UUID default_sub_category_id FK "NOT NULL, REFERENCES txn.retention_sub_categories(id)"
+        VARCHAR_255 registered_by "NOT NULL"
+        TIMESTAMPTZ registered_at "NOT NULL, DEFAULT NOW()"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 created_by "NOT NULL"
+        TIMESTAMPTZ updated_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 updated_by "NOT NULL"
+        TIMESTAMPTZ deleted_at
+        VARCHAR_255 deleted_by
+    }
+
+    retention_upstream_module {
+        UUID id PK "default gen_random_uuid()"
+        VARCHAR_50 module_code UK "NOT NULL, UNIQUE"
+        VARCHAR_200 module_name "NOT NULL"
+        TEXT api_key_hash "NOT NULL"
+        BOOLEAN is_active "NOT NULL, DEFAULT TRUE"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_100 created_by "NOT NULL"
+        TIMESTAMPTZ updated_at
+        VARCHAR_100 updated_by
+        TIMESTAMPTZ deleted_at
+        VARCHAR_100 deleted_by
+    }
+
+    retention_bucket {
+        UUID id PK "default gen_random_uuid()"
+        VARCHAR_50 bucket_code UK "NOT NULL, UNIQUE"
+        VARCHAR_200 bucket_name "NOT NULL"
+        SMALLINT retention_years "NOT NULL, CHECK(> 0)"
+        TEXT description
+        BOOLEAN is_active "NOT NULL, DEFAULT TRUE"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_100 created_by "NOT NULL"
+        TIMESTAMPTZ updated_at
+        VARCHAR_100 updated_by
+        TIMESTAMPTZ deleted_at
+        VARCHAR_100 deleted_by
+    }
+
+    retention_auto_classification {
+        UUID id PK "default gen_random_uuid()"
+        UUID table_onboarding_id FK "NOT NULL, REFERENCES txn.retention_table_onboarding(id)"
+        TEXT upstream_row_id "NOT NULL"
+        UUID retention_bucket_id FK "NOT NULL, REFERENCES txn.retention_bucket(id)"
+        DATE basis_date "NOT NULL"
+        DATE retention_date "NOT NULL"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_100 created_by "NOT NULL, DEFAULT 'SYSTEM_TRIGGER'"
+        TIMESTAMPTZ updated_at
+        VARCHAR_100 updated_by
+        TIMESTAMPTZ deleted_at
+        VARCHAR_100 deleted_by
+    }
+
+    retention_audit_event {
+        UUID id PK "default gen_random_uuid()"
+        VARCHAR_128 event_type "NOT NULL"
+        VARCHAR_64 entity_type "NOT NULL"
+        JSONB entity_id "NOT NULL"
+        VARCHAR_255 schema_name
+        VARCHAR_255 table_name
+        UUID sub_category_id
+        DATE eligibility_date
+        DATE basis_date
+        VARCHAR_64 source_system
+        VARCHAR_255 source_reference
+        JSONB payload "NOT NULL, DEFAULT '{}'"
+        VARCHAR_255 actor_user_id
+        UUID correlation_id
+        TIMESTAMPTZ occurred_at "NOT NULL, DEFAULT NOW()"
+        TIMESTAMPTZ created_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 created_by "NOT NULL, DEFAULT 'trigger'"
+        TIMESTAMPTZ updated_at "NOT NULL, DEFAULT NOW()"
+        VARCHAR_255 updated_by "NOT NULL, DEFAULT 'trigger'"
+        TIMESTAMPTZ deleted_at
+        VARCHAR_255 deleted_by
+    }
