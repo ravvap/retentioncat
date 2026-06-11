@@ -1,8 +1,8 @@
 package gov.fdic.tip.retention.service;
 
-import gov.fdic.tip.retention.dto.AuditEventResponse;
-import gov.fdic.tip.retention.entity.AuditEvent;
-import gov.fdic.tip.retention.repository.AuditEventRepository;
+import gov.fdic.tip.retention.dto.response.AuditEventResponse;
+import gov.fdic.tip.retention.entity.RetentionAuditEvent;
+import gov.fdic.tip.retention.repository.RetentionAuditEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
@@ -11,49 +11,56 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 
 /**
- * Story 3 – US-1.Audit-Lean: Reconstruct retention history for any record.
- *
- * AC-1  One audit trail covers both document promotions and auto-classifications.
- * AC-2  Each event has enough context to stand on its own (denormalised snapshot).
- * AC-3  Audit events are permanent; DB rules prevent UPDATE/DELETE.
- * AC-4  Pre-built query endpoints serve common auditor questions.
- * AC-5  One-off queries serviced by a designated analyst (not in scope of API).
- * AC-6  Querying by bucket returns events from all upstream modules.
+ * US-1.Audit-Lean: Reconstruct retention history for any record.
+ * Serves the unified audit archive covering both Pattern A and Pattern B.
  */
 @Service
 @RequiredArgsConstructor
 public class AuditService {
 
-    private final AuditEventRepository auditRepo;
+    private final RetentionAuditEventRepository auditRepo;
 
     @Transactional(readOnly = true)
     public Page<AuditEventResponse> search(
-            String bucketCode,
+            String categoryCode,
+            String subCategoryCode,
             String moduleCode,
-            AuditEvent.EventType eventType,
+            RetentionAuditEvent.EventType eventType,
+            RetentionAuditEvent.ClassificationPattern pattern,
             OffsetDateTime from,
             OffsetDateTime to,
-            int page,
-            int size) {
+            int page, int size) {
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by("occurredAt").descending());
-
-        return auditRepo.search(bucketCode, moduleCode, eventType, from, to, pageable)
-                .map(this::toResponse);
+        return auditRepo.search(
+                categoryCode, subCategoryCode, moduleCode,
+                eventType, pattern, from, to,
+                PageRequest.of(page, size)
+        ).map(this::toResponse);
     }
 
-    private AuditEventResponse toResponse(AuditEvent e) {
+    private AuditEventResponse toResponse(RetentionAuditEvent e) {
         return AuditEventResponse.builder()
                 .eventId(e.getId())
                 .eventType(e.getEventType().name())
-                .upstreamModuleCode(e.getUpstreamModuleCode())
-                .upstreamReference(e.getUpstreamReference())
-                .retentionBucketCode(e.getRetentionBucketCode())
+                .classificationPattern(e.getClassificationPattern().name())
+                .moduleCode(e.getModuleCode())
+                .sourceReference(e.getSourceReference())
+                .categoryCode(e.getCategoryCode())
+                .subCategoryCode(e.getSubCategoryCode())
+                .retentionDurationValue(e.getRetentionDurationValue() != null
+                        ? e.getRetentionDurationValue() : 0)
+                .retentionDurationUnit(e.getRetentionDurationUnit())
                 .basisDate(e.getBasisDate())
-                .retentionDate(e.getRetentionDate())
+                .eligibilityDate(e.getEligibilityDate())
+                .hasEverHeldContent(e.getHasEverHeldContent())
+                .cmDocumentId(e.getCmDocumentId())
+                .entityType(e.getEntityType())
+                .entityId(e.getEntityId())
+                .tableSchema(e.getTableSchema())
+                .tableName(e.getTableName())
+                .reason(e.getReason())
                 .occurredAt(e.getOccurredAt())
                 .performedBy(e.getPerformedBy())
-                .eventDetail(e.getEventDetail())
                 .build();
     }
 }

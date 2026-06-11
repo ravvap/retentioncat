@@ -1,29 +1,26 @@
 package gov.fdic.tip.retention.dto.response;
 
-import gov.fdic.tip.retention.enums.RetentionDurationUnit;
-import gov.fdic.tip.retention.enums.RetentionStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-@Data
-@Builder
+@Value @Builder @Jacksonized
+@Schema(description = "Retention Sub-Category (leaf retention bucket)")
 public class SubCategoryResponse {
-    private UUID id;
-    private UUID categoryId;
-    private String categoryName;
-    private String code;
-    private String name;
-    private String description;
-    private Integer retentionDurationValue;
-    private RetentionDurationUnit retentionDurationUnit;
-    private RetentionStatus status;
-    private Boolean hasEverHeldContent;
-    private Long classifiedItemCount;
-    private OffsetDateTime createdAt;
-    private String createdBy;
-    private OffsetDateTime updatedAt;
-    private String updatedBy;
+    UUID           id;
+    String         categoryCode;
+    String         categoryName;
+    String         code;
+    String         name;
+    String         description;
+    short          retentionDurationValue;
+    String         retentionDurationUnit;
+    boolean        classificationAllowed;
+    boolean        active;
+    OffsetDateTime createdAt;
+    String         createdBy;
 }

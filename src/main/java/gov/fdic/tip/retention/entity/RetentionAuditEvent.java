@@ -2,93 +2,119 @@ package gov.fdic.tip.retention.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.Map;
 import java.util.UUID;
 
 /**
- * Maps to tip_retention_audit_archive.
- * Application code only reads this table; writes happen exclusively through
- * DB triggers (tip_retention_emit_audit) or via the service layer for
- * taxonomy-level events (category created/edited/activated/etc.).
+ * Permanent, append-only audit archive covering both Pattern A and Pattern B.
+ *
+ * Written explicitly by ClassificationService / RecordClassificationService –
+ * never by a DB trigger.
+ *
+ * DB RULES prevent UPDATE and DELETE on the underlying table.
+ * This entity therefore has no @LastModifiedDate / @CreatedBy auditing;
+ * occurred_at and performed_by are set once at construction.
+ *
+ * All taxonomy fields (category_code, sub_category_code, duration) are
+ * denormalised snapshots so the audit trail remains accurate even if the
+ * taxonomy changes later.
  */
 @Entity
-@Table(name = "tip_retention_audit_archive")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Table(name = "retention_audit_archive", schema = "tip")
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class RetentionAuditEvent {
+
+    public enum EventType {
+        DOCUMENT_CLASSIFIED,
+        RECORD_CLASSIFIED,
+        CLASSIFICATION_FAILED
+    }
+
+    public enum ClassificationPattern { A, B }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "event_type", nullable = false, length = 128)
-    private String eventType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type", nullable = false, length = 30)
+    private EventType eventType;
 
-    @Column(name = "entity_type", nullable = false, length = 64)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "classification_pattern", nullable = false, length = 1)
+    private ClassificationPattern classificationPattern;
+
+    // ── Pattern A reference ──────────────────────────────────────────────────
+
+    /** FK to cm_documents – populated for Pattern A events only. */
+    @Column(name = "cm_document_id")
+    private UUID cmDocumentId;
+
+    // ── Pattern B reference ──────────────────────────────────────────────────
+
+    @Column(name = "entity_type", length = 100)
     private String entityType;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "entity_id", nullable = false, columnDefinition = "jsonb")
-    private Map<String, Object> entityId;
+    @Column(name = "entity_id")
+    private String entityId;
 
-    @Column(name = "schema_name", length = 255)
-    private String schemaName;
+    @Column(name = "table_schema", length = 100)
+    private String tableSchema;
 
-    @Column(name = "table_name", length = 255)
+    @Column(name = "table_name", length = 100)
     private String tableName;
 
-    @Column(name = "sub_category_id")
-    private UUID subCategoryId;
+    // ── Who ──────────────────────────────────────────────────────────────────
 
-    @Column(name = "eligibility_date")
-    private LocalDate eligibilityDate;
+    /** Azure AD appid / module code from JWT. */
+    @Column(name = "module_code", nullable = false, length = 100)
+    private String moduleCode;
+
+    @Column(name = "source_reference", length = 500)
+    private String sourceReference;
+
+    // ── Taxonomy snapshot ────────────────────────────────────────────────────
+
+    @Column(name = "category_code", nullable = false, length = 50)
+    private String categoryCode;
+
+    @Column(name = "sub_category_code", nullable = false, length = 50)
+    private String subCategoryCode;
+
+    // ── Retention snapshot ───────────────────────────────────────────────────
 
     @Column(name = "basis_date")
     private LocalDate basisDate;
 
-    @Column(name = "source_system", length = 64)
-    private String sourceSystem;
+    @Column(name = "eligibility_date")
+    private LocalDate eligibilityDate;
 
-    @Column(name = "source_reference", length = 255)
-    private String sourceReference;
+    @Column(name = "retention_duration_value")
+    private Short retentionDurationValue;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "payload", nullable = false, columnDefinition = "jsonb")
-    @Builder.Default
-    private Map<String, Object> payload = Map.of();
+    @Column(name = "retention_duration_unit", length = 10)
+    private String retentionDurationUnit;
 
-    @Column(name = "actor_user_id", length = 255)
-    private String actorUserId;
+    @Column(name = "has_ever_held_content")
+    private Boolean hasEverHeldContent;
 
-    @Column(name = "correlation_id")
-    private UUID correlationId;
+    // ── Failure detail ───────────────────────────────────────────────────────
 
-    @Column(name = "occurred_at", nullable = false)
+    @Column(name = "reason")
+    private String reason;
+
+    @Column(name = "event_detail", columnDefinition = "jsonb")
+    private String eventDetail;
+
+    // ── When / who ───────────────────────────────────────────────────────────
+
+    @Column(name = "occurred_at", nullable = false, updatable = false)
     @Builder.Default
     private OffsetDateTime occurredAt = OffsetDateTime.now();
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    @Builder.Default
-    private OffsetDateTime createdAt = OffsetDateTime.now();
-
-    @Column(name = "created_by", nullable = false, length = 255)
-    @Builder.Default
-    private String createdBy = "system";
-
-    @Column(name = "updated_at", nullable = false)
-    @Builder.Default
-    private OffsetDateTime updatedAt = OffsetDateTime.now();
-
-    @Column(name = "updated_by", nullable = false, length = 255)
-    @Builder.Default
-    private String updatedBy = "system";
+    /** JWT subject / name of the caller. */
+    @Column(name = "performed_by", nullable = false, length = 200)
+    private String performedBy;
 }

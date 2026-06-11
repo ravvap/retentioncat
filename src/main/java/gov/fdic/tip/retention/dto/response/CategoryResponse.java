@@ -1,23 +1,21 @@
 package gov.fdic.tip.retention.dto.response;
 
-import gov.fdic.tip.retention.enums.RetentionStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-@Data
-@Builder
+@Value @Builder @Jacksonized
+@Schema(description = "Retention Category")
 public class CategoryResponse {
-    private UUID id;
-    private String code;
-    private String name;
-    private String description;
-    private RetentionStatus status;
-    private Boolean hasEverHeldContent;
-    private OffsetDateTime createdAt;
-    private String createdBy;
-    private OffsetDateTime updatedAt;
-    private String updatedBy;
+    UUID           id;
+    String         code;
+    String         name;
+    String         description;
+    boolean        active;
+    OffsetDateTime createdAt;
+    String         createdBy;
 }

@@ -3,23 +3,18 @@ package gov.fdic.tip.retention.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedBy;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedBy;
-import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.annotation.*;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.OffsetDateTime;
 
 /**
- * Base class providing full audit columns for all mutable entities:
- * created_at / created_by / updated_at / updated_by / deleted_at / deleted_by
- * <p>
- * Spring Data JPA Auditing populates created_at, created_by, updated_at, updated_by.
- * deleted_at / deleted_by are set explicitly by service layer (soft-delete pattern).
+ * Base class for all mutable entities.
+ * created_at / created_by → set once on INSERT by Spring Data JPA auditing.
+ * updated_at / updated_by → refreshed on every UPDATE.
+ * deleted_at / deleted_by → soft-delete; set by service, never hard-deleted in lean MVP.
  */
-@Getter
-@Setter
+@Getter @Setter
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
 public abstract class Auditable {
@@ -29,7 +24,7 @@ public abstract class Auditable {
     private OffsetDateTime createdAt;
 
     @CreatedBy
-    @Column(name = "created_by", nullable = false, updatable = false, length = 100)
+    @Column(name = "created_by", nullable = false, updatable = false, length = 200)
     private String createdBy;
 
     @LastModifiedDate
@@ -37,14 +32,13 @@ public abstract class Auditable {
     private OffsetDateTime updatedAt;
 
     @LastModifiedBy
-    @Column(name = "updated_by", length = 100)
+    @Column(name = "updated_by", length = 200)
     private String updatedBy;
 
-    /** Set by service layer on logical deletion (soft-delete). */
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
-    @Column(name = "deleted_by", length = 100)
+    @Column(name = "deleted_by", length = 200)
     private String deletedBy;
 
     public boolean isDeleted() {

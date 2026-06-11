@@ -1,198 +1,177 @@
--- ============================================================
--- TIP CM Retention Lean MVP  –  PostgreSQL Schema
+-- =============================================================
+-- TIP CM Retention Lean MVP v2
 -- CONTROLLED // FDIC INTERNAL ONLY
--- ============================================================
+--
+-- Design principles:
+--   1. NO database triggers  – all logic in Spring Boot
+--   2. NO upstream_module table – identity from Azure AD JWT
+--   3. Audit events store module_code from JWT claim (denormalized)
+-- =============================================================
 
--- ── Extensions ───────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- ── Schema ───────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS tip;
 SET search_path = tip, public;
 
--- ============================================================
--- LOOKUP / REFERENCE TABLES
--- ============================================================
+-- ── Enums ─────────────────────────────────────────────────────────────────────
 
--- 1. Upstream Modules  (registered callers allowed to use the API)
--- Examples: Examination Workflow, Case Management, Request Manager
-CREATE TABLE upstream_module (
-    id                  UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    module_code         VARCHAR(50)  NOT NULL UNIQUE,   -- e.g. 'EW', 'CM', 'RM'
-    module_name         VARCHAR(200) NOT NULL,
-    api_key_hash        TEXT         NOT NULL,           -- bcrypt hash of the issued API key
-    is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
-    -- audit columns
-    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by          VARCHAR(100) NOT NULL,
-    updated_at          TIMESTAMPTZ,
-    updated_by          VARCHAR(100),
-    deleted_at          TIMESTAMPTZ,
-    deleted_by          VARCHAR(100)
+CREATE TYPE tip.duration_unit AS ENUM ('DAYS', 'MONTHS', 'YEARS');
+CREATE TYPE tip.classification_pattern AS ENUM ('A', 'B');
+CREATE TYPE tip.audit_event_type AS ENUM (
+    'DOCUMENT_CLASSIFIED',
+    'RECORD_CLASSIFIED',
+    'CLASSIFICATION_FAILED'
 );
-COMMENT ON TABLE upstream_module IS
-    'Registered FDIC systems authorised to call the TIP retention API.';
 
--- 2. Retention Buckets  (defined & owned by Records Management)
-CREATE TABLE retention_bucket (
-    id                  UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    bucket_code         VARCHAR(50)  NOT NULL UNIQUE,   -- e.g. 'EXAM_FINDINGS_25Y'
-    bucket_name         VARCHAR(200) NOT NULL,           -- "Examination Findings"
-    retention_years     SMALLINT     NOT NULL CHECK (retention_years > 0),
-    description         TEXT,
-    is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
-    -- audit columns
-    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by          VARCHAR(100) NOT NULL,
-    updated_at          TIMESTAMPTZ,
-    updated_by          VARCHAR(100),
-    deleted_at          TIMESTAMPTZ,
-    deleted_by          VARCHAR(100)
+-- =============================================================
+-- 1. RETENTION CATEGORY  (top-level grouping)
+-- =============================================================
+CREATE TABLE tip.retention_category (
+    id           UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code         VARCHAR(50)  NOT NULL UNIQUE,
+    name         VARCHAR(200) NOT NULL,
+    description  TEXT,
+    is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_by   VARCHAR(200) NOT NULL,
+    updated_at   TIMESTAMPTZ,
+    updated_by   VARCHAR(200),
+    deleted_at   TIMESTAMPTZ,
+    deleted_by   VARCHAR(200)
 );
-COMMENT ON TABLE retention_bucket IS
-    'Named category of records sharing a single retention period. Defined by Records Management.';
 
--- ============================================================
--- CORE RETENTION TABLES
--- ============================================================
+CREATE INDEX idx_rc_code   ON tip.retention_category (code);
+CREATE INDEX idx_rc_active ON tip.retention_category (is_active) WHERE is_active;
 
--- 3. Retention Record  (one row per document promoted via API)
---    Story 1 – US-1.13-Lean
-CREATE TABLE retention_record (
-    id                      UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    upstream_module_id      UUID        NOT NULL REFERENCES upstream_module(id),
-    upstream_reference      VARCHAR(500) NOT NULL,  -- caller's own doc ID
-    retention_bucket_id     UUID        NOT NULL REFERENCES retention_bucket(id),
-    basis_date              DATE         NOT NULL,   -- business event date supplied by caller
-    retention_date          DATE         NOT NULL,   -- computed: basis_date + retention_years
-    blob_storage_uri        TEXT,                    -- Azure Blob pointer; content lives there
-    -- audit columns
-    created_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by              VARCHAR(100) NOT NULL,
-    updated_at              TIMESTAMPTZ,
-    updated_by              VARCHAR(100),
-    deleted_at              TIMESTAMPTZ,
-    deleted_by              VARCHAR(100),
-    -- prevent true duplicates while allowing the caller to retry safely
-    CONSTRAINT uq_upstream_doc UNIQUE (upstream_module_id, upstream_reference)
+-- =============================================================
+-- 2. RETENTION SUB-CATEGORY  (leaf bucket – retention lives here)
+-- =============================================================
+CREATE TABLE tip.retention_sub_category (
+    id                       UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_id              UUID         NOT NULL REFERENCES tip.retention_category (id),
+    code                     VARCHAR(50)  NOT NULL UNIQUE,
+    name                     VARCHAR(200) NOT NULL,
+    description              TEXT,
+    retention_duration_value SMALLINT     NOT NULL CHECK (retention_duration_value > 0),
+    retention_duration_unit  tip.duration_unit NOT NULL,
+    fallback_sub_category_id UUID         REFERENCES tip.retention_sub_category (id),
+    classification_allowed   BOOLEAN      NOT NULL DEFAULT TRUE,
+    is_active                BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_by   VARCHAR(200) NOT NULL,
+    updated_at   TIMESTAMPTZ,
+    updated_by   VARCHAR(200),
+    deleted_at   TIMESTAMPTZ,
+    deleted_by   VARCHAR(200)
 );
-COMMENT ON TABLE retention_record IS
-    'One row per document brought under retention via the promote-document API (Story 1).';
 
--- 4. Table Onboarding  (one row per upstream table enrolled for auto-classification)
---    Story 2 – US-1.24-Lean
-CREATE TABLE table_onboarding (
-    id                      UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    upstream_module_id      UUID        NOT NULL REFERENCES upstream_module(id),
+CREATE INDEX idx_rsc_category ON tip.retention_sub_category (category_id);
+CREATE INDEX idx_rsc_code     ON tip.retention_sub_category (code);
+CREATE INDEX idx_rsc_active   ON tip.retention_sub_category (is_active, classification_allowed)
+    WHERE is_active AND classification_allowed;
+
+-- =============================================================
+-- 3. PATTERN B – OPERATIONAL TABLE REGISTRY
+--    One row per upstream table enrolled for retention.
+--    No module FK – module identity stored as plain varchar from JWT.
+-- =============================================================
+CREATE TABLE tip.operational_table_registry (
+    id                      UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
     schema_name             VARCHAR(100) NOT NULL,
     table_name              VARCHAR(100) NOT NULL,
-    basis_date_column       VARCHAR(100) NOT NULL,   -- column the trigger reads for basis date
-    retention_bucket_id     UUID         NOT NULL REFERENCES retention_bucket(id),
-    trigger_name            VARCHAR(200),            -- name of the DB trigger installed
+    basis_date_column       VARCHAR(100) NOT NULL,
+    default_sub_category_id UUID         NOT NULL REFERENCES tip.retention_sub_category (id),
+    owning_module_code      VARCHAR(100) NOT NULL,   -- from JWT claim at registration time
+    classification_pattern  tip.classification_pattern NOT NULL DEFAULT 'B',
     is_active               BOOLEAN      NOT NULL DEFAULT TRUE,
-    onboarded_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    onboarded_by            VARCHAR(100) NOT NULL,
-    -- audit columns
-    created_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by              VARCHAR(100) NOT NULL,
-    updated_at              TIMESTAMPTZ,
-    updated_by              VARCHAR(100),
-    deleted_at              TIMESTAMPTZ,
-    deleted_by              VARCHAR(100),
-    CONSTRAINT uq_onboarded_table UNIQUE (schema_name, table_name)
-);
-COMMENT ON TABLE table_onboarding IS
-    'Records every upstream database table enrolled for automatic retention classification (Story 2).';
-
--- 5. Automatic Classification Record  (created by trigger for each new row in onboarded table)
-CREATE TABLE auto_classification (
-    id                      UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
-    table_onboarding_id     UUID        NOT NULL REFERENCES table_onboarding(id),
-    upstream_row_id         TEXT         NOT NULL,   -- PK value of the upstream row (as text)
-    retention_bucket_id     UUID         NOT NULL REFERENCES retention_bucket(id),
-    basis_date              DATE         NOT NULL,
-    retention_date          DATE         NOT NULL,
-    -- audit columns
-    created_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by              VARCHAR(100) NOT NULL DEFAULT 'SYSTEM_TRIGGER',
-    updated_at              TIMESTAMPTZ,
-    updated_by              VARCHAR(100),
-    deleted_at              TIMESTAMPTZ,
-    deleted_by              VARCHAR(100)
-);
-COMMENT ON TABLE auto_classification IS
-    'One row per upstream table-row automatically classified by a DB trigger (Story 2).';
-
--- ============================================================
--- AUDIT TRAIL  (Story 3 – US-1.Audit-Lean)
--- Single immutable table covering BOTH promotions and auto-classifications
--- ============================================================
-
-CREATE TYPE tip.audit_event_type AS ENUM (
-    'DOCUMENT_PROMOTED',
-    'AUTO_CLASSIFIED',
-    'PROMOTION_FAILED',
-    'AUTO_CLASSIFICATION_FAILED',
-    'RECORD_CORRECTED'
+    registered_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    registered_by           VARCHAR(200) NOT NULL,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_by   VARCHAR(200) NOT NULL,
+    updated_at   TIMESTAMPTZ,
+    updated_by   VARCHAR(200),
+    deleted_at   TIMESTAMPTZ,
+    deleted_by   VARCHAR(200),
+    CONSTRAINT uq_schema_table UNIQUE (schema_name, table_name)
 );
 
-CREATE TABLE audit_event (
-    id                      UUID            PRIMARY KEY DEFAULT uuid_generate_v4(),
-    event_type              tip.audit_event_type NOT NULL,
-    -- polymorphic source references (one will be populated)
-    retention_record_id     UUID            REFERENCES retention_record(id),
-    auto_classification_id  UUID            REFERENCES auto_classification(id),
-    -- denormalised snapshot (never changes even if upstream data changes)
-    upstream_module_code    VARCHAR(50)     NOT NULL,
-    upstream_reference      VARCHAR(500),
-    retention_bucket_code   VARCHAR(50)     NOT NULL,
-    basis_date              DATE,
-    retention_date          DATE,
-    event_detail            JSONB,          -- free-form context (error messages, etc.)
-    -- who / when
-    occurred_at             TIMESTAMPTZ     NOT NULL DEFAULT now(),
-    performed_by            VARCHAR(100)    NOT NULL,
-    -- Audit events are PERMANENT – no update / delete columns intentionally
-    CONSTRAINT chk_audit_source CHECK (
-        retention_record_id IS NOT NULL OR auto_classification_id IS NOT NULL
-        OR event_type IN ('PROMOTION_FAILED','AUTO_CLASSIFICATION_FAILED')
-    )
+CREATE INDEX idx_otr_module ON tip.operational_table_registry (owning_module_code);
+CREATE INDEX idx_otr_active ON tip.operational_table_registry (is_active) WHERE is_active;
+
+-- =============================================================
+-- 4. CM_DOCUMENTS  (Pattern A – promoted documents)
+--    module_code stored as varchar from JWT – no FK to module table.
+-- =============================================================
+CREATE TABLE tip.cm_documents (
+    id                    UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    module_code           VARCHAR(100) NOT NULL,     -- from JWT claim
+    source_system         VARCHAR(100),
+    source_reference      VARCHAR(500) NOT NULL,
+    filename              VARCHAR(500),
+    size_bytes            BIGINT,
+    sha256                VARCHAR(64),
+    sub_category_id       UUID         NOT NULL REFERENCES tip.retention_sub_category (id),
+    basis_date            DATE         NOT NULL,
+    eligibility_date      DATE         NOT NULL,
+    has_ever_held_content BOOLEAN      NOT NULL DEFAULT FALSE,
+    blob_storage_uri      TEXT,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_by   VARCHAR(200) NOT NULL,
+    updated_at   TIMESTAMPTZ,
+    updated_by   VARCHAR(200),
+    deleted_at   TIMESTAMPTZ,
+    deleted_by   VARCHAR(200),
+    CONSTRAINT uq_module_source_ref UNIQUE (module_code, source_reference)
 );
-COMMENT ON TABLE audit_event IS
-    'Permanent, append-only audit trail for all retention decisions (Story 3). Never updated or deleted.';
 
--- Prevent any UPDATE or DELETE on audit_event
-CREATE RULE audit_event_no_update AS ON UPDATE TO audit_event DO INSTEAD NOTHING;
-CREATE RULE audit_event_no_delete AS ON DELETE TO audit_event DO INSTEAD NOTHING;
+CREATE INDEX idx_cmd_module   ON tip.cm_documents (module_code);
+CREATE INDEX idx_cmd_sub_cat  ON tip.cm_documents (sub_category_id);
+CREATE INDEX idx_cmd_elig     ON tip.cm_documents (eligibility_date);
+CREATE INDEX idx_cmd_basis    ON tip.cm_documents (basis_date);
 
--- ============================================================
--- INDEXES
--- ============================================================
+-- =============================================================
+-- 5. AUDIT ARCHIVE  (permanent, append-only)
+--    DB RULES enforce immutability – no UPDATE or DELETE ever.
+-- =============================================================
+CREATE TABLE tip.retention_audit_archive (
+    id                       UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_type               tip.audit_event_type       NOT NULL,
+    classification_pattern   tip.classification_pattern NOT NULL,
+    -- Pattern A ref
+    cm_document_id           UUID         REFERENCES tip.cm_documents (id),
+    -- Pattern B ref
+    entity_type              VARCHAR(100),
+    entity_id                TEXT,
+    table_schema             VARCHAR(100),
+    table_name               VARCHAR(100),
+    -- Who / what
+    module_code              VARCHAR(100) NOT NULL,
+    source_reference         VARCHAR(500),
+    -- Taxonomy snapshot (denormalized – survives taxonomy changes)
+    category_code            VARCHAR(50)  NOT NULL,
+    sub_category_code        VARCHAR(50)  NOT NULL,
+    -- Retention snapshot
+    basis_date               DATE,
+    eligibility_date         DATE,
+    retention_duration_value SMALLINT,
+    retention_duration_unit  TEXT,
+    has_ever_held_content    BOOLEAN,
+    -- Failure reason (CLASSIFICATION_FAILED only)
+    reason                   TEXT,
+    -- Extra context
+    event_detail             JSONB,
+    -- When / who
+    occurred_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    performed_by             VARCHAR(200) NOT NULL
+);
 
--- upstream_module
-CREATE INDEX idx_um_module_code     ON upstream_module(module_code);
-CREATE INDEX idx_um_is_active       ON upstream_module(is_active) WHERE is_active = TRUE;
+-- Immutability rules – no UPDATE or DELETE ever
+CREATE RULE audit_no_update AS ON UPDATE TO tip.retention_audit_archive DO INSTEAD NOTHING;
+CREATE RULE audit_no_delete AS ON DELETE TO tip.retention_audit_archive DO INSTEAD NOTHING;
 
--- retention_bucket
-CREATE INDEX idx_rb_bucket_code     ON retention_bucket(bucket_code);
-CREATE INDEX idx_rb_is_active       ON retention_bucket(is_active) WHERE is_active = TRUE;
-
--- retention_record
-CREATE INDEX idx_rr_upstream_module ON retention_record(upstream_module_id);
-CREATE INDEX idx_rr_bucket          ON retention_record(retention_bucket_id);
-CREATE INDEX idx_rr_basis_date      ON retention_record(basis_date);
-CREATE INDEX idx_rr_retention_date  ON retention_record(retention_date);
-
--- auto_classification
-CREATE INDEX idx_ac_onboarding      ON auto_classification(table_onboarding_id);
-CREATE INDEX idx_ac_bucket          ON auto_classification(retention_bucket_id);
-CREATE INDEX idx_ac_retention_date  ON auto_classification(retention_date);
-
--- audit_event  (supports auditor queries by bucket, date range, module)
-CREATE INDEX idx_ae_event_type      ON audit_event(event_type);
-CREATE INDEX idx_ae_occurred_at     ON audit_event(occurred_at);
-CREATE INDEX idx_ae_bucket_code     ON audit_event(retention_bucket_code);
-CREATE INDEX idx_ae_module_code     ON audit_event(upstream_module_code);
-CREATE INDEX idx_ae_rr_id           ON audit_event(retention_record_id);
-CREATE INDEX idx_ae_ac_id           ON audit_event(auto_classification_id);
+CREATE INDEX idx_aud_occurred  ON tip.retention_audit_archive (occurred_at DESC);
+CREATE INDEX idx_aud_cat       ON tip.retention_audit_archive (category_code);
+CREATE INDEX idx_aud_subcat    ON tip.retention_audit_archive (sub_category_code);
+CREATE INDEX idx_aud_module    ON tip.retention_audit_archive (module_code);
+CREATE INDEX idx_aud_type      ON tip.retention_audit_archive (event_type);
+CREATE INDEX idx_aud_pattern   ON tip.retention_audit_archive (classification_pattern);
+CREATE INDEX idx_aud_cm_doc    ON tip.retention_audit_archive (cm_document_id);

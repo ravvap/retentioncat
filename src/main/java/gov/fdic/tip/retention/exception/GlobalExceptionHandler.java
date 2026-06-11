@@ -1,57 +1,68 @@
 package gov.fdic.tip.retention.exception;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
-    record ErrorResponse(int status, String error, String message, OffsetDateTime timestamp, Object details) {}
+    record ErrorBody(int status, String error, String message,
+                     OffsetDateTime timestamp, Object details) {}
 
-    @ExceptionHandler(RetentionBucketNotFoundException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleBucketNotFound(RetentionBucketNotFoundException ex) {
-        log.warn("Retention bucket not found: {}", ex.getMessage());
-        return new ErrorResponse(400, "BAD_REQUEST", ex.getMessage(), OffsetDateTime.now(), null);
+    @ExceptionHandler(SubCategoryNotFoundException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ErrorBody handleSubCat(SubCategoryNotFoundException ex) {
+        log.warn("422 SubCategoryNotFound: {}", ex.getMessage());
+        return body(422, "UNPROCESSABLE_ENTITY", ex.getMessage(), null);
     }
 
-    @ExceptionHandler(UnauthorizedModuleException.class)
-    @ResponseStatus(HttpStatus.UNAUTHORIZED)
-    public ErrorResponse handleUnauthorized(UnauthorizedModuleException ex) {
-        log.warn("Unauthorised module: {}", ex.getMessage());
-        return new ErrorResponse(401, "UNAUTHORIZED", ex.getMessage(), OffsetDateTime.now(), null);
+    @ExceptionHandler(CategoryNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorBody handleCat(CategoryNotFoundException ex) {
+        log.warn("404 CategoryNotFound: {}", ex.getMessage());
+        return body(404, "NOT_FOUND", ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(TableNotRegisteredException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ErrorBody handleTableNotReg(TableNotRegisteredException ex) {
+        log.warn("422 TableNotRegistered: {}", ex.getMessage());
+        return body(422, "UNPROCESSABLE_ENTITY", ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(DuplicateRegistrationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorBody handleDuplicate(DuplicateRegistrationException ex) {
+        log.warn("409 DuplicateRegistration: {}", ex.getMessage());
+        return body(409, "CONFLICT", ex.getMessage(), null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> fieldErrors = new LinkedHashMap<>();
-        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
-            fieldErrors.put(fe.getField(), fe.getDefaultMessage());
-        }
-        return new ErrorResponse(400, "VALIDATION_FAILED", "Request validation failed",
-                OffsetDateTime.now(), fieldErrors);
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
-    public ErrorResponse handleIllegalArg(IllegalArgumentException ex) {
-        log.warn("Illegal argument: {}", ex.getMessage());
-        return new ErrorResponse(409, "CONFLICT", ex.getMessage(), OffsetDateTime.now(), null);
+    public ErrorBody handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError fe : ex.getBindingResult().getFieldErrors())
+            errors.put(fe.getField(), fe.getDefaultMessage());
+        log.warn("400 ValidationFailed: {}", errors);
+        return body(400, "VALIDATION_FAILED", "Request validation failed", errors);
     }
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ErrorResponse handleAll(Exception ex) {
-        log.error("Unhandled exception", ex);
-        return new ErrorResponse(500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred",
-                OffsetDateTime.now(), null);
+    public ErrorBody handleAll(Exception ex) {
+        log.error("500 Unhandled exception", ex);
+        return body(500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred", null);
+    }
+
+    private ErrorBody body(int status, String error, String message, Object details) {
+        return new ErrorBody(status, error, message, OffsetDateTime.now(), details);
     }
 }
