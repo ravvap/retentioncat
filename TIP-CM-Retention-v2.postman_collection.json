@@ -1,0 +1,1294 @@
+{
+  "info": {
+    "name": "TIP CM Retention Lean MVP v2",
+    "description": "Complete test collection for FDIC TIP CM Retention API.\n\nCovers:\n- Taxonomy (Categories & Sub-Categories)\n- Pattern A: Document Classification (US-1.13-Lean)\n- Pattern B: Table Registration & automatic trigger-based classification (US-1.24-Lean)\n- Audit Archive queries (US-1.Audit-Lean)\n- Error / edge-case scenarios\n\nSetup:\n1. Set collection variable `baseUrl` to your server (default: http://localhost:8080/tip/api)\n2. Set `bearerToken` to a valid Azure AD JWT with appropriate roles\n3. Run the folders in order: Taxonomy → Pattern A → Pattern B → Audit",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "tip-cm-retention-v2"
+  },
+  "variable": [
+    { "key": "baseUrl",       "value": "http://localhost:8080/tip/api", "type": "string" },
+    { "key": "bearerToken",   "value": "REPLACE_WITH_AZURE_AD_JWT",     "type": "string" },
+    { "key": "categoryId",    "value": "", "type": "string" },
+    { "key": "subCategoryId", "value": "", "type": "string" },
+    { "key": "documentId",    "value": "", "type": "string" },
+    { "key": "auditEventId",  "value": "", "type": "string" },
+    { "key": "registrationId","value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{bearerToken}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "01 - Taxonomy",
+      "description": "Browse retention Categories and Sub-Categories (read-only).",
+      "item": [
+
+        {
+          "name": "01.01 List all Categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has content array', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('content');",
+                  "  pm.expect(body.content).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('First category has expected fields', () => {",
+                  "  const cat = pm.response.json().content[0];",
+                  "  pm.expect(cat).to.have.all.keys('id','code','name','active','createdAt','createdBy');",
+                  "  pm.expect(cat.active).to.be.true;",
+                  "});",
+                  "// Store first category id for later tests",
+                  "const first = pm.response.json().content[0];",
+                  "pm.collectionVariables.set('categoryId', first.id);",
+                  "pm.collectionVariables.set('testCategoryCode', first.code);",
+                  "console.log('Stored categoryId:', first.id, 'code:', first.code);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/categories?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","categories"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "01.02 Get Category by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Category ID matches', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get('categoryId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","categories","{{categoryId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "01.03 Get Category by ID – Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Error body has status field', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(404);",
+                  "  pm.expect(body.error).to.eql('NOT_FOUND');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/categories/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","categories","00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+
+        {
+          "name": "01.04 List Sub-Categories (all)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has sub-category content', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.content).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('Sub-category has duration fields', () => {",
+                  "  const sc = pm.response.json().content[0];",
+                  "  pm.expect(sc).to.have.property('retentionDurationValue');",
+                  "  pm.expect(sc).to.have.property('retentionDurationUnit');",
+                  "  pm.expect(['DAYS','MONTHS','YEARS']).to.include(sc.retentionDurationUnit);",
+                  "});",
+                  "// Store first sub-category for classify tests",
+                  "const sc = pm.response.json().content[0];",
+                  "pm.collectionVariables.set('subCategoryId', sc.id);",
+                  "pm.collectionVariables.set('subCategoryCode', sc.code);",
+                  "console.log('Stored subCategoryCode:', sc.code);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/sub-categories?page=0&size=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","sub-categories"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "50" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "01.05 List Sub-Categories filtered by Category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All results belong to requested category', () => {",
+                  "  const body = pm.response.json();",
+                  "  if (body.content.length > 0) {",
+                  "    body.content.forEach(sc => {",
+                  "      pm.expect(sc.categoryCode).to.eql('EXAM_RECORDS');",
+                  "    });",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/sub-categories?categoryCode=EXAM_RECORDS&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","sub-categories"],
+              "query": [
+                { "key": "categoryCode", "value": "EXAM_RECORDS" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "01.06 Get Sub-Category by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sub-category ID matches', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get('subCategoryId'));",
+                  "  pm.expect(body.classificationAllowed).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/sub-categories/{{subCategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","sub-categories","{{subCategoryId}}"]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "02 - Pattern A – Document Classification",
+      "description": "US-1.13-Lean: Classify documents into TIP retention via the REST API.\n\nFlow tested:\n1. Classify new document → 201\n2. Re-submit same sourceReference → 200 (idempotent)\n3. Classify with unknown sub-category → 422\n4. Classify with missing required fields → 400\n5. Retrieve by ID\n6. Search with filters",
+      "item": [
+
+        {
+          "name": "02.01 Classify Document – New (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate a unique sourceReference per run so re-runs don't hit idempotency",
+                  "const ref = 'EW-' + new Date().getTime();",
+                  "pm.collectionVariables.set('sourceRef', ref);",
+                  "console.log('Using sourceRef:', ref);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Response has retentionRecordId', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('retentionRecordId');",
+                  "  pm.expect(body.retentionRecordId).to.be.a('string');",
+                  "  pm.collectionVariables.set('documentId', body.retentionRecordId);",
+                  "});",
+                  "pm.test('eligibilityDate is basisDate + 25 years', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.eligibilityDate).to.eql('2051-05-29');",
+                  "  pm.expect(body.retentionDurationValue).to.eql(25);",
+                  "  pm.expect(body.retentionDurationUnit).to.eql('YEARS');",
+                  "});",
+                  "pm.test('auditEventId is populated', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.auditEventId).to.be.a('string');",
+                  "  pm.collectionVariables.set('auditEventId', body.auditEventId);",
+                  "});",
+                  "pm.test('Category and sub-category populated', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.categoryCode).to.eql('EXAM_RECORDS');",
+                  "  pm.expect(body.subCategoryCode).to.eql('EXAM_FINDINGS_25Y');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceReference\": \"{{sourceRef}}\",\n  \"sourceSystem\": \"examination_workflow\",\n  \"filename\": \"EW-finding-report.pdf\",\n  \"sizeBytes\": 204800,\n  \"subCategoryCode\": \"EXAM_FINDINGS_25Y\",\n  \"basisDate\": \"2026-05-29\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "02.02 Classify Document – Idempotent Re-submit (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 (idempotent)', () => pm.response.to.have.status(200));",
+                  "pm.test('Same retentionRecordId returned', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.retentionRecordId).to.eql(pm.collectionVariables.get('documentId'));",
+                  "});",
+                  "pm.test('auditEventId is null for idempotent hit', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.auditEventId).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceReference\": \"{{sourceRef}}\",\n  \"sourceSystem\": \"examination_workflow\",\n  \"filename\": \"EW-finding-report.pdf\",\n  \"sizeBytes\": 204800,\n  \"subCategoryCode\": \"EXAM_FINDINGS_25Y\",\n  \"basisDate\": \"2026-05-29\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "02.03 Classify Document – Case Records 15Y",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('sourceRefCase', 'CASE-' + new Date().getTime());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('eligibilityDate is basisDate + 15 years', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.eligibilityDate).to.eql('2041-03-15');",
+                  "  pm.expect(body.retentionDurationValue).to.eql(15);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceReference\": \"{{sourceRefCase}}\",\n  \"sourceSystem\": \"case_management\",\n  \"filename\": \"enforcement-case-2026.pdf\",\n  \"sizeBytes\": 512000,\n  \"subCategoryCode\": \"CASE_ENFORCE_15Y\",\n  \"basisDate\": \"2026-03-15\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "02.04 Classify Document – Financial RS5 Wires 5Y",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('sourceRefFin', 'WIRE-' + new Date().getTime());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('eligibilityDate is basisDate + 5 years', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.eligibilityDate).to.eql('2031-01-10');",
+                  "  pm.expect(body.retentionDurationValue).to.eql(5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceReference\": \"{{sourceRefFin}}\",\n  \"sourceSystem\": \"financial_system\",\n  \"filename\": \"wire-transfer-2026-01-10.pdf\",\n  \"sizeBytes\": 8192,\n  \"subCategoryCode\": \"RS5_WIRES\",\n  \"basisDate\": \"2026-01-10\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "02.05 Classify Document – INVALID Sub-Category (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error body indicates sub-category problem', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(422);",
+                  "  pm.expect(body.error).to.eql('UNPROCESSABLE_ENTITY');",
+                  "  pm.expect(body.message).to.include('DOES_NOT_EXIST');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceReference\": \"ERR-001\",\n  \"subCategoryCode\": \"DOES_NOT_EXIST\",\n  \"basisDate\": \"2026-05-29\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "02.06 Classify Document – Missing Required Fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Validation errors present', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(400);",
+                  "  pm.expect(body.error).to.eql('VALIDATION_FAILED');",
+                  "  pm.expect(body.details).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceSystem\": \"orphan_system\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "02.07 Get Document by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Document ID matches', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.retentionRecordId).to.eql(pm.collectionVariables.get('documentId'));",
+                  "});",
+                  "pm.test('eligibilityDate is present', () => {",
+                  "  pm.expect(pm.response.json().eligibilityDate).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents","{{documentId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "02.08 Get Document by ID – Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents","00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+
+        {
+          "name": "02.09 Search Documents – by Category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Results filtered to EXAM_RECORDS', () => {",
+                  "  const body = pm.response.json();",
+                  "  if (body.content.length > 0) {",
+                  "    body.content.forEach(d => pm.expect(d.categoryCode).to.eql('EXAM_RECORDS'));",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents?categoryCode=EXAM_RECORDS&page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"],
+              "query": [
+                { "key": "categoryCode", "value": "EXAM_RECORDS" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "02.10 Search Documents – by Sub-Category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Results filtered to EXAM_FINDINGS_25Y', () => {",
+                  "  const body = pm.response.json();",
+                  "  if (body.content.length > 0) {",
+                  "    body.content.forEach(d => pm.expect(d.subCategoryCode).to.eql('EXAM_FINDINGS_25Y'));",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents?subCategoryCode=EXAM_FINDINGS_25Y&page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"],
+              "query": [
+                { "key": "subCategoryCode", "value": "EXAM_FINDINGS_25Y" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "10" }
+              ]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "03 - Pattern B – Table Registration",
+      "description": "US-1.24-Lean: Register upstream tables for automatic DB-trigger-based retention.\n\nAfter registration, TIP installs BEFORE + AFTER INSERT triggers on the upstream table.\nEvery INSERT then auto-computes eligibility_date with no per-row API call needed.",
+      "item": [
+
+        {
+          "name": "03.01 Register Table – examination.findings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Registration response has required fields', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('registrationId');",
+                  "  pm.expect(body).to.have.property('triggerName');",
+                  "  pm.expect(body.schemaName).to.eql('examination');",
+                  "  pm.expect(body.tableName).to.eql('findings');",
+                  "  pm.expect(body.basisDateColumn).to.eql('closed_date');",
+                  "  pm.expect(body.defaultSubCategoryCode).to.eql('EXAM_FINDINGS_25Y');",
+                  "  pm.collectionVariables.set('registrationId', body.registrationId);",
+                  "  pm.collectionVariables.set('triggerName', body.triggerName);",
+                  "  console.log('Trigger installed:', body.triggerName);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaName\": \"examination\",\n  \"tableName\": \"findings\",\n  \"basisDateColumn\": \"closed_date\",\n  \"defaultSubCategoryCode\": \"EXAM_FINDINGS_25Y\",\n  \"registeredBy\": \"jsmith\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/table-registrations",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","table-registrations"]
+            }
+          }
+        },
+
+        {
+          "name": "03.02 Register Table – case_mgmt.cases",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('case_mgmt.cases registered', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.schemaName).to.eql('case_mgmt');",
+                  "  pm.expect(body.tableName).to.eql('cases');",
+                  "  pm.expect(body.defaultSubCategoryCode).to.eql('CASE_ENFORCE_15Y');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaName\": \"case_mgmt\",\n  \"tableName\": \"cases\",\n  \"basisDateColumn\": \"case_closed_date\",\n  \"defaultSubCategoryCode\": \"CASE_ENFORCE_15Y\",\n  \"registeredBy\": \"jsmith\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/table-registrations",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","table-registrations"]
+            }
+          }
+        },
+
+        {
+          "name": "03.03 Register Table – Duplicate (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('Conflict error body', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(409);",
+                  "  pm.expect(body.error).to.eql('CONFLICT');",
+                  "  pm.expect(body.message).to.include('examination.findings');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaName\": \"examination\",\n  \"tableName\": \"findings\",\n  \"basisDateColumn\": \"closed_date\",\n  \"defaultSubCategoryCode\": \"EXAM_FINDINGS_25Y\",\n  \"registeredBy\": \"jsmith\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/table-registrations",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","table-registrations"]
+            }
+          }
+        },
+
+        {
+          "name": "03.04 Register Table – Invalid Sub-Category (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error references bad sub-category', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(422);",
+                  "  pm.expect(body.message).to.include('BAD_SUBCAT_CODE');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaName\": \"other_schema\",\n  \"tableName\": \"other_table\",\n  \"basisDateColumn\": \"event_date\",\n  \"defaultSubCategoryCode\": \"BAD_SUBCAT_CODE\",\n  \"registeredBy\": \"jsmith\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/table-registrations",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","table-registrations"]
+            }
+          }
+        },
+
+        {
+          "name": "03.05 Register Table – Missing Required Fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Validation details present', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.details).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaName\": \"examination\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/table-registrations",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","table-registrations"]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "04 - Audit Archive",
+      "description": "US-1.Audit-Lean: Query the permanent, immutable retention audit trail.\n\nCovers:\n- List all events (no filter)\n- Filter by pattern A / B\n- Filter by category and sub-category\n- Filter by event type\n- Filter by date range\n- Verify Pattern B events written by trigger",
+      "item": [
+
+        {
+          "name": "04.01 List All Audit Events (no filter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns paginated audit events', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('content');",
+                  "  pm.expect(body).to.have.property('totalElements');",
+                  "  pm.expect(body.content).to.be.an('array');",
+                  "});",
+                  "pm.test('Audit event has required fields', () => {",
+                  "  const body = pm.response.json();",
+                  "  if (body.content.length > 0) {",
+                  "    const e = body.content[0];",
+                  "    pm.expect(e).to.have.property('id');",
+                  "    pm.expect(e).to.have.property('eventType');",
+                  "    pm.expect(e).to.have.property('classificationPattern');",
+                  "    pm.expect(e).to.have.property('categoryCode');",
+                  "    pm.expect(e).to.have.property('subCategoryCode');",
+                  "    pm.expect(e).to.have.property('eligibilityDate');",
+                  "    pm.expect(e).to.have.property('occurredAt');",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.02 Filter – Pattern A Events Only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All events are Pattern A', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.classificationPattern).to.eql('A');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?classificationPattern=A&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "classificationPattern", "value": "A" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.03 Filter – Pattern B Events Only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All events are Pattern B', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.classificationPattern).to.eql('B');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?classificationPattern=B&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "classificationPattern", "value": "B" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.04 Filter – DOCUMENT_CLASSIFIED Events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All events are DOCUMENT_CLASSIFIED', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.eventType).to.eql('DOCUMENT_CLASSIFIED');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?eventType=DOCUMENT_CLASSIFIED&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "eventType", "value": "DOCUMENT_CLASSIFIED" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.05 Filter – RECORD_CLASSIFIED Events (Pattern B trigger)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All events are RECORD_CLASSIFIED', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.eventType).to.eql('RECORD_CLASSIFIED');",
+                  "    pm.expect(e.classificationPattern).to.eql('B');",
+                  "    // Pattern B events have tableSchema + tableName, not cmDocumentId",
+                  "    pm.expect(e.tableSchema).to.be.a('string');",
+                  "    pm.expect(e.tableName).to.be.a('string');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?eventType=RECORD_CLASSIFIED&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "eventType", "value": "RECORD_CLASSIFIED" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.06 Filter – by Category EXAM_RECORDS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All events belong to EXAM_RECORDS', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.categoryCode).to.eql('EXAM_RECORDS');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?categoryCode=EXAM_RECORDS&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "categoryCode", "value": "EXAM_RECORDS" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.07 Filter – by Sub-Category EXAM_FINDINGS_25Y",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All events use EXAM_FINDINGS_25Y', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.subCategoryCode).to.eql('EXAM_FINDINGS_25Y');",
+                  "    pm.expect(e.retentionDurationValue).to.eql(25);",
+                  "    pm.expect(e.retentionDurationUnit).to.eql('YEARS');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?subCategoryCode=EXAM_FINDINGS_25Y&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "subCategoryCode", "value": "EXAM_FINDINGS_25Y" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.08 Filter – Date Range (last 24h)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const yesterday = new Date(Date.now() - 86400000).toISOString();",
+                  "const tomorrow  = new Date(Date.now() + 86400000).toISOString();",
+                  "pm.collectionVariables.set('fromDate', yesterday);",
+                  "pm.collectionVariables.set('toDate',   tomorrow);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Events within date range', () => {",
+                  "  const body = pm.response.json();",
+                  "  const from = new Date(pm.collectionVariables.get('fromDate'));",
+                  "  const to   = new Date(pm.collectionVariables.get('toDate'));",
+                  "  body.content.forEach(e => {",
+                  "    const occurred = new Date(e.occurredAt);",
+                  "    pm.expect(occurred >= from && occurred <= to).to.be.true;",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?from={{fromDate}}&to={{toDate}}&page=0&size=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "from", "value": "{{fromDate}}" },
+                { "key": "to",   "value": "{{toDate}}" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "50" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.09 Filter – Category + Pattern A combined",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('All results match both filters', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.categoryCode).to.eql('EXAM_RECORDS');",
+                  "    pm.expect(e.classificationPattern).to.eql('A');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?categoryCode=EXAM_RECORDS&classificationPattern=A&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "categoryCode",           "value": "EXAM_RECORDS" },
+                { "key": "classificationPattern",  "value": "A" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "04.10 Filter – CLASSIFICATION_FAILED Events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Failed events have reason populated', () => {",
+                  "  const body = pm.response.json();",
+                  "  body.content.forEach(e => {",
+                  "    pm.expect(e.eventType).to.eql('CLASSIFICATION_FAILED');",
+                  "    pm.expect(e.reason).to.be.a('string').that.is.not.empty;",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events?eventType=CLASSIFICATION_FAILED&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"],
+              "query": [
+                { "key": "eventType", "value": "CLASSIFICATION_FAILED" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "05 - Security",
+      "description": "Verify authentication and authorization boundaries.",
+      "item": [
+
+        {
+          "name": "05.01 No Token – Unauthorized (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 without token', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceReference\": \"NO-TOKEN\",\n  \"subCategoryCode\": \"EXAM_FINDINGS_25Y\",\n  \"basisDate\": \"2026-05-29\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","documents"]
+            }
+          }
+        },
+
+        {
+          "name": "05.02 Invalid Token – Unauthorized (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 with bad token', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "not.a.valid.jwt", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/audit-events",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1","audit-events"]
+            }
+          }
+        },
+
+        {
+          "name": "05.03 Health Check – No Auth Required",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 for health endpoint', () => pm.response.to.have.status(200));",
+                  "pm.test('Health status UP', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('UP');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator","health"]
+            }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
