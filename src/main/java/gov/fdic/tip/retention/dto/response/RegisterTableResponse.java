@@ -11,12 +11,13 @@ import java.util.UUID;
 @Value @Builder @Jacksonized
 @Schema(description = "Confirmation of Pattern B table registration")
 public class RegisterTableResponse {
-    UUID           registrationId;
-    String         schemaName;
-    String         tableName;
-    String         basisDateColumn;
-    String         defaultSubCategoryCode;
-    String         defaultSubCategoryName;
-    String         owningModuleCode;
+    UUID registrationId;
+    String schemaName;
+    String tableName;
+    String basisDateColumn;
+    String defaultSubCategoryCode;
+    String defaultSubCategoryName;
+    String owningModuleCode;
+    String triggerName;
     OffsetDateTime registeredAt;
 }

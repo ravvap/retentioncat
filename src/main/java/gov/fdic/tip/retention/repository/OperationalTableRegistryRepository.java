@@ -8,11 +8,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface OperationalTableRegistryRepository
-        extends JpaRepository<OperationalTableRegistry, UUID> {
-
+public interface OperationalTableRegistryRepository extends JpaRepository<OperationalTableRegistry, UUID> {
     Optional<OperationalTableRegistry> findBySchemaNameAndTableNameAndActiveTrue(
             String schemaName, String tableName);
-
     boolean existsBySchemaNameAndTableName(String schemaName, String tableName);
 }

@@ -15,7 +15,7 @@ import java.util.UUID;
 public class ClassifyDocumentResponse {
 
     @Schema(description = "TIP UUID – store this to look up the record later")
-    UUID   retentionRecordId;
+    UUID retentionRecordId;
 
     String sourceReference;
     String moduleCode;
@@ -23,7 +23,7 @@ public class ClassifyDocumentResponse {
     String categoryName;
     String subCategoryCode;
     String subCategoryName;
-    short  retentionDurationValue;
+    short retentionDurationValue;
     String retentionDurationUnit;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
@@ -33,5 +33,5 @@ public class ClassifyDocumentResponse {
     LocalDate eligibilityDate;
 
     OffsetDateTime classifiedAt;
-    UUID           auditEventId;
+    UUID auditEventId;
 }

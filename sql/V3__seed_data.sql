@@ -1,9 +1,9 @@
 -- =============================================================
--- TIP CM Retention Lean MVP v2 – Seed Data
+-- TIP CM Retention Lean MVP v2  –  Seed Data
 -- =============================================================
 SET search_path = tip, public;
 
--- ── Retention Categories ──────────────────────────────────────
+-- Retention Categories
 INSERT INTO tip.retention_category (code, name, description, is_active, created_by) VALUES
   ('EXAM_RECORDS',    'Examination Records',       'FDIC examination activities',           TRUE, 'SEED'),
   ('CASE_RECORDS',    'Case Records',              'Case management and enforcement',        TRUE, 'SEED'),
@@ -11,7 +11,7 @@ INSERT INTO tip.retention_category (code, name, description, is_active, created_
   ('CORRESPONDENCE',  'Correspondence',            'Internal and external correspondence',  TRUE, 'SEED'),
   ('INVESTMENT',      'Investment Records',        'NLF investments and reporting',         TRUE, 'SEED');
 
--- ── Sub-Categories: Examination Records ──────────────────────
+-- Sub-Categories: Examination Records
 INSERT INTO tip.retention_sub_category
     (category_id, code, name, retention_duration_value, retention_duration_unit,
      classification_allowed, is_active, created_by)
@@ -24,7 +24,7 @@ FROM   tip.retention_category c,
        ) AS v(cat, code, name, val, unit)
 WHERE  c.code = v.cat;
 
--- ── Sub-Categories: Case Records ─────────────────────────────
+-- Sub-Categories: Case Records
 INSERT INTO tip.retention_sub_category
     (category_id, code, name, retention_duration_value, retention_duration_unit,
      classification_allowed, is_active, created_by)
@@ -36,7 +36,7 @@ FROM   tip.retention_category c,
        ) AS v(cat, code, name, val, unit)
 WHERE  c.code = v.cat;
 
--- ── Sub-Categories: Financial Transactions ───────────────────
+-- Sub-Categories: Financial Transactions
 INSERT INTO tip.retention_sub_category
     (category_id, code, name, retention_duration_value, retention_duration_unit,
      classification_allowed, is_active, created_by)
@@ -56,7 +56,7 @@ FROM   tip.retention_category c,
        ) AS v(cat, code, name, val, unit)
 WHERE  c.code = v.cat;
 
--- ── Sub-Categories: Correspondence ───────────────────────────
+-- Sub-Categories: Correspondence
 INSERT INTO tip.retention_sub_category
     (category_id, code, name, retention_duration_value, retention_duration_unit,
      classification_allowed, is_active, created_by)
@@ -68,7 +68,7 @@ FROM   tip.retention_category c,
        ) AS v(cat, code, name, val, unit)
 WHERE  c.code = v.cat;
 
--- ── Sub-Categories: Investment Records ───────────────────────
+-- Sub-Categories: Investment Records
 INSERT INTO tip.retention_sub_category
     (category_id, code, name, retention_duration_value, retention_duration_unit,
      classification_allowed, is_active, created_by)

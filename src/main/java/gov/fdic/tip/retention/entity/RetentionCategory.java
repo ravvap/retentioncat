@@ -1,17 +1,12 @@
 package gov.fdic.tip.retention.entity;
-
 import jakarta.persistence.*;
 import lombok.*;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Entity
 @Table(name = "retention_category", schema = "tip")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class RetentionCategory extends Auditable {
-
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;

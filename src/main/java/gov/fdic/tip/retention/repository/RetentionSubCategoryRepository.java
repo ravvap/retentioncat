@@ -11,11 +11,7 @@ import java.util.UUID;
 
 @Repository
 public interface RetentionSubCategoryRepository extends JpaRepository<RetentionSubCategory, UUID> {
-
-    /** Used by classification: must be active AND classification_allowed. */
     Optional<RetentionSubCategory> findByCodeAndActiveTrueAndClassificationAllowedTrue(String code);
-
     Page<RetentionSubCategory> findByCategoryCodeAndActiveTrue(String categoryCode, Pageable pageable);
-
     Page<RetentionSubCategory> findAllByActiveTrue(Pageable pageable);
 }

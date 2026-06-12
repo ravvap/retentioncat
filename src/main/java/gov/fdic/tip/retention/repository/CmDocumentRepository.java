@@ -13,10 +13,7 @@ import java.util.UUID;
 
 @Repository
 public interface CmDocumentRepository extends JpaRepository<CmDocument, UUID> {
-
-    /** Idempotency check – same caller + same reference returns the existing record. */
-    Optional<CmDocument> findByModuleCodeAndSourceReference(
-            String moduleCode, String sourceReference);
+    Optional<CmDocument> findByModuleCodeAndSourceReference(String moduleCode, String sourceReference);
 
     @Query("""
         SELECT d FROM CmDocument d

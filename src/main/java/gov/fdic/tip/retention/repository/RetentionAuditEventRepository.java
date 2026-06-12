@@ -14,10 +14,6 @@ import java.util.UUID;
 @Repository
 public interface RetentionAuditEventRepository extends JpaRepository<RetentionAuditEvent, UUID> {
 
-    /**
-     * Flexible audit search used by GET /v1/audit-events.
-     * All parameters are optional – null means "no filter on this column".
-     */
     @Query("""
         SELECT a FROM RetentionAuditEvent a
         WHERE (:categoryCode  IS NULL OR a.categoryCode           = :categoryCode)

@@ -2,14 +2,21 @@ package gov.fdic.tip.retention.service;
 
 import gov.fdic.tip.retention.dto.request.ClassifyDocumentRequest;
 import gov.fdic.tip.retention.dto.response.ClassifyDocumentResponse;
-import gov.fdic.tip.retention.entity.*;
+import gov.fdic.tip.retention.entity.CmDocument;
+import gov.fdic.tip.retention.entity.RetentionAuditEvent;
+import gov.fdic.tip.retention.entity.RetentionCategory;
+import gov.fdic.tip.retention.entity.RetentionSubCategory;
 import gov.fdic.tip.retention.exception.SubCategoryNotFoundException;
-import gov.fdic.tip.retention.repository.*;
+import gov.fdic.tip.retention.repository.CmDocumentRepository;
+import gov.fdic.tip.retention.repository.RetentionAuditEventRepository;
+import gov.fdic.tip.retention.repository.RetentionSubCategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.*;
-import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -19,15 +26,16 @@ import java.util.UUID;
 /**
  * Pattern A – US-1.13-Lean: Classify Document at Creation.
  *
- * No database trigger involved. This service:
- *   1. Validates the sub-category (active + classification_allowed)
- *   2. Checks idempotency (moduleCode + sourceReference must be unique)
- *   3. Computes eligibilityDate = basisDate + sub-category retention duration
- *   4. Persists CmDocument
- *   5. Writes RetentionAuditEvent(DOCUMENT_CLASSIFIED)
- *   All steps run inside one @Transactional block – rollback on any failure.
+ * Responsibilities:
+ *  1. Validate sub-category (active + classification_allowed)
+ *  2. Idempotency check (moduleCode + sourceReference must be unique)
+ *  3. Compute eligibility_date = basisDate + retention duration (Java)
+ *  4. Persist CmDocument
+ *  5. Write RetentionAuditEvent(DOCUMENT_CLASSIFIED)
+ *  Steps 3-5 run inside a single @Transactional – atomic rollback on failure.
  *
- * moduleCode comes from the caller's Azure AD JWT, not from a DB table.
+ * moduleCode is extracted from the Azure AD JWT by the controller
+ * and passed in; it is NOT fetched from a module table.
  */
 @Service
 @RequiredArgsConstructor
@@ -46,7 +54,7 @@ public class ClassificationService {
                                                       ClassifyDocumentRequest req) {
         long start = System.currentTimeMillis();
 
-        // AC-3: validate sub-category
+        // Validate sub-category: must be active AND classification_allowed
         RetentionSubCategory subCat = subCategoryRepo
                 .findByCodeAndActiveTrueAndClassificationAllowedTrue(req.getSubCategoryCode())
                 .orElseThrow(() -> {
@@ -55,7 +63,7 @@ public class ClassificationService {
                     return new SubCategoryNotFoundException(req.getSubCategoryCode());
                 });
 
-        // AC-8: idempotency – return existing record for same module + reference
+        // Idempotency: same module + sourceReference → return the existing record
         Optional<CmDocument> existing =
                 documentRepo.findByModuleCodeAndSourceReference(moduleCode, req.getSourceReference());
         if (existing.isPresent()) {
@@ -64,7 +72,7 @@ public class ClassificationService {
             return toResponse(existing.get());
         }
 
-        // AC-4: compute eligibility date in Java (no DB trigger)
+        // Compute eligibility date in Java (mirrors DB fn_compute_eligibility_date)
         LocalDate eligibilityDate = calculator.compute(
                 req.getBasisDate(),
                 subCat.getRetentionDurationValue(),
@@ -81,14 +89,14 @@ public class ClassificationService {
                 .subCategory(subCat)
                 .basisDate(req.getBasisDate())
                 .eligibilityDate(eligibilityDate)
-                .hasEverHeldContent(true)          // AC-6: first classification → true
+                .hasEverHeldContent(true)
                 .blobStorageUri(req.getBlobStorageUri())
                 .build();
 
         doc = documentRepo.save(doc);
 
-        // Write audit event (AC-5: every successful classification writes one row)
-        RetentionAuditEvent audit = writeAudit(doc, subCat);
+        // Write audit event – atomic with the document persist above
+        RetentionAuditEvent audit = writeAuditEvent(doc, subCat);
 
         log.info("[CLASSIFY-A][SUCCESS] module={} ref={} eligibility={} elapsed={}ms",
                 moduleCode, req.getSourceReference(), eligibilityDate, elapsed(start));
@@ -106,17 +114,18 @@ public class ClassificationService {
     @Transactional(readOnly = true)
     public Page<ClassifyDocumentResponse> search(String moduleCode, String categoryCode,
                                                   String subCatCode, int page, int size) {
-        return documentRepo.search(moduleCode, categoryCode, subCatCode,
-                PageRequest.of(page, size)).map(this::toResponse);
+        return documentRepo
+                .search(moduleCode, categoryCode, subCatCode, PageRequest.of(page, size))
+                .map(this::toResponse);
     }
 
-    // ── Failure audit (AC-9) ────────────────────────────────────────────────
+    // ── Failure audit ───────────────────────────────────────────────────────
 
     /**
-     * Writes a CLASSIFICATION_FAILED audit event outside any active transaction.
-     * Called by the controller's catch block so it survives a rollback.
+     * Writes a CLASSIFICATION_FAILED audit event in a NEW transaction so the
+     * failure is recorded even when the main transaction rolls back.
      */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logFailure(String moduleCode, String subCatCode,
                            String sourceRef, String reason) {
         try {
@@ -132,13 +141,13 @@ public class ClassificationService {
                     .performedBy(moduleCode)
                     .build());
         } catch (Exception e) {
-            log.error("[CLASSIFY-A][AUDIT_FAIL] Could not write failure event", e);
+            log.error("[CLASSIFY-A][AUDIT_FAIL] Could not write failure audit event", e);
         }
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
-    private RetentionAuditEvent writeAudit(CmDocument doc, RetentionSubCategory sc) {
+    private RetentionAuditEvent writeAuditEvent(CmDocument doc, RetentionSubCategory sc) {
         return auditRepo.save(RetentionAuditEvent.builder()
                 .eventType(RetentionAuditEvent.EventType.DOCUMENT_CLASSIFIED)
                 .classificationPattern(RetentionAuditEvent.ClassificationPattern.A)
@@ -178,5 +187,7 @@ public class ClassificationService {
                 .build();
     }
 
-    private long elapsed(long start) { return System.currentTimeMillis() - start; }
+    private long elapsed(long start) {
+        return System.currentTimeMillis() - start;
+    }
 }

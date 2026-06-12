@@ -1,38 +1,37 @@
 package gov.fdic.tip.retention.config;
 
-import io.swagger.v3.oas.models.*;
-import io.swagger.v3.oas.models.info.*;
-import io.swagger.v3.oas.models.security.*;
-import org.springframework.context.annotation.*;
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.info.Contact;
+import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import io.swagger.v3.oas.annotations.servers.Server;
+import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class OpenApiConfig {
-
-    @Bean
-    public OpenAPI tipRetentionOpenApi() {
-        return new OpenAPI()
-                .info(new Info()
-                        .title("TIP CM Retention API")
-                        .description("""
-                            FDIC TIP Content Management – Retention Lean MVP
-                            
-                            **CONTROLLED // FDIC INTERNAL ONLY**
-                            
-                            Implements three user stories:
-                            - **Story 1 (US-1.13-Lean)** – Promote a document into retention
-                            - **Story 2 (US-1.24-Lean)** – Classify every new record automatically
-                            - **Story 3 (US-1.Audit-Lean)** – Reconstruct retention history for any record
-                            """)
-                        .version("1.0.0")
-                        .contact(new Contact()
-                                .name("TIP Team")
-                                .email("tip-team@fdic.gov")))
-                .addSecurityItem(new SecurityRequirement().addList("ApiKeyAuth"))
-                .components(new Components()
-                        .addSecuritySchemes("ApiKeyAuth",
-                                new SecurityScheme()
-                                        .type(SecurityScheme.Type.APIKEY)
-                                        .in(SecurityScheme.In.HEADER)
-                                        .name("X-API-Key")));
+@OpenAPIDefinition(
+    info = @Info(
+        title       = "TIP CM Retention API",
+        version     = "2.0",
+        description = "FDIC TIP Content Management Retention – Lean MVP v2.\n\n" +
+                      "**Pattern A (US-1.13-Lean):** Classify documents into retention via REST.\n\n" +
+                      "**Pattern B (US-1.24-Lean):** Operational records classified automatically " +
+                      "via DB trigger at INSERT time.\n\n" +
+                      "**Authentication:** Azure AD / Microsoft Entra Bearer token. " +
+                      "Paste a JWT from your Azure AD tenant into the Authorize dialog below.",
+        contact     = @Contact(name = "FDIC TIP Team")
+    ),
+    servers = {
+        @Server(url = "/tip/api", description = "Default")
     }
+)
+@SecurityScheme(
+    name   = "bearerAuth",
+    type   = SecuritySchemeType.HTTP,
+    scheme = "bearer",
+    bearerFormat = "JWT",
+    description  = "Azure AD JWT. Obtain via: POST https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token"
+)
+public class OpenApiConfig {
+    // All configuration via annotations above
 }

@@ -11,17 +11,17 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Value @Builder @Jacksonized
-@Schema(description = "Single entry in the permanent retention audit archive")
+@Schema(description = "Single entry from the permanent retention audit archive")
 public class AuditEventResponse {
-    UUID           eventId;
-    String         eventType;
-    String         classificationPattern;
-    String         moduleCode;
-    String         sourceReference;
-    String         categoryCode;
-    String         subCategoryCode;
-    short          retentionDurationValue;
-    String         retentionDurationUnit;
+    UUID id;
+    String eventType;
+    String classificationPattern;
+    String moduleCode;
+    String sourceReference;
+    String categoryCode;
+    String subCategoryCode;
+    short retentionDurationValue;
+    String retentionDurationUnit;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
     LocalDate basisDate;
@@ -29,13 +29,13 @@ public class AuditEventResponse {
     @JsonFormat(pattern = "yyyy-MM-dd")
     LocalDate eligibilityDate;
 
-    Boolean        hasEverHeldContent;
-    UUID           cmDocumentId;
-    String         entityType;
-    String         entityId;
-    String         tableSchema;
-    String         tableName;
-    String         reason;
+    Boolean hasEverHeldContent;
+    UUID cmDocumentId;
+    String entityType;
+    String entityId;
+    String tableSchema;
+    String tableName;
+    String reason;
     OffsetDateTime occurredAt;
-    String         performedBy;
+    String performedBy;
 }

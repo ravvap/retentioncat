@@ -6,21 +6,16 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 
 /**
- * Pure utility – no Spring dependencies beyond @Component.
- * Computes the eligibility date from a basis date and retention duration.
- * Extracted so it can be unit-tested in isolation without mocking.
+ * Pure utility: computes eligibility_date = basis_date + retention duration.
+ *
+ * Used by Pattern A (ClassificationService) only.
+ * Pattern B uses the equivalent PL/pgSQL function fn_compute_eligibility_date().
+ *
+ * Extracted as a standalone component so it can be unit-tested in isolation.
  */
 @Component
 public class RetentionCalculator {
 
-    /**
-     * eligibility_date = basis_date + retention_duration
-     *
-     * @param basisDate  the business event date (non-null)
-     * @param value      numeric portion of the retention period (e.g. 25)
-     * @param unit       DAYS / MONTHS / YEARS
-     * @return computed eligibility date
-     */
     public LocalDate compute(LocalDate basisDate, short value, DurationUnit unit) {
         return switch (unit) {
             case DAYS   -> basisDate.plusDays(value);

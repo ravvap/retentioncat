@@ -1,15 +1,12 @@
 spring:
   application:
     name: tip-cm-retention
-
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:tipdb}
     username: ${DB_USERNAME:tip_app}
     password: ${DB_PASSWORD:changeme}
     hikari:
       maximum-pool-size: 10
-      connection-timeout: 30000
-
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,21 +15,16 @@ spring:
         default_schema: tip
         dialect: org.hibernate.dialect.PostgreSQLDialect
     open-in-view: false
-
   flyway:
     enabled: true
     schemas: tip
     locations: classpath:db/migration
     baseline-on-migrate: true
-
-  # Azure AD / Microsoft Entra – JWT resource server
-  # The issuer URI tells Spring where to fetch the JWKS public keys
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID}/v2.0
-          # jwk-set-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID}/discovery/v2.0/keys
 
 server:
   port: 8080
@@ -44,7 +36,6 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
-    oauth2-redirect-url: /tip/api/swagger-ui/oauth2-redirect.html
 
 management:
   endpoints:
@@ -60,29 +51,3 @@ logging:
     root: INFO
     gov.fdic.tip: DEBUG
     org.springframework.security: WARN
-    org.springframework.security.oauth2: INFO
-
-# TIP-specific settings
-tip:
-  security:
-    # Azure AD App Registration client-id (audience claim must match)
-    client-id: ${AZURE_CLIENT_ID:tip-cm-retention-dev}
-    # Claim used as module identity – e.g. "appid" or a custom claim
-    module-claim: appid
-    # Roles claim name in the JWT
-    roles-claim: roles
----
-# Dev profile: allow running without real Azure AD (use mock JWT)
-spring:
-  config:
-    activate:
-      on-profile: dev
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          # Point to local dev auth server (e.g. spring-authorization-server or Keycloak)
-          issuer-uri: http://localhost:9000
-logging:
-  level:
-    org.springframework.security: DEBUG

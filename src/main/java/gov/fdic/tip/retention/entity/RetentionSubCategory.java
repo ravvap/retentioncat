@@ -1,19 +1,12 @@
 package gov.fdic.tip.retention.entity;
-
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.util.UUID;
 
-/**
- * Leaf retention bucket – the only level where a retention duration is defined.
- * Callers supply a sub_category_code; the service looks up duration from here.
- */
 @Entity
 @Table(name = "retention_sub_category", schema = "tip")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class RetentionSubCategory extends Auditable {
-
     public enum DurationUnit { DAYS, MONTHS, YEARS }
 
     @Id

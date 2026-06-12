@@ -4,7 +4,8 @@ import gov.fdic.tip.retention.dto.response.AuditEventResponse;
 import gov.fdic.tip.retention.entity.RetentionAuditEvent;
 import gov.fdic.tip.retention.repository.RetentionAuditEventRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,7 +13,13 @@ import java.time.OffsetDateTime;
 
 /**
  * US-1.Audit-Lean: Reconstruct retention history for any record.
- * Serves the unified audit archive covering both Pattern A and Pattern B.
+ *
+ * Serves the unified audit archive covering both Pattern A and Pattern B events.
+ * The archive is written by:
+ *  - Pattern A: ClassificationService (Spring)
+ *  - Pattern B: AFTER INSERT trigger (PL/pgSQL)
+ *
+ * All reads are read-only; the archive is immutable (DB RULES prevent UPDATE/DELETE).
  */
 @Service
 @RequiredArgsConstructor
@@ -40,7 +47,7 @@ public class AuditService {
 
     private AuditEventResponse toResponse(RetentionAuditEvent e) {
         return AuditEventResponse.builder()
-                .eventId(e.getId())
+                .id(e.getId())
                 .eventType(e.getEventType().name())
                 .classificationPattern(e.getClassificationPattern().name())
                 .moduleCode(e.getModuleCode())

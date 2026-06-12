@@ -9,16 +9,19 @@ import gov.fdic.tip.retention.exception.SubCategoryNotFoundException;
 import gov.fdic.tip.retention.repository.RetentionCategoryRepository;
 import gov.fdic.tip.retention.repository.RetentionSubCategoryRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
 /**
- * Read-only taxonomy queries.
+ * Read-only taxonomy access.
+ *
  * Categories and Sub-Categories are managed by Records Management
- * and seeded via Flyway; the lean MVP exposes them as read-only.
+ * and seeded via Flyway migrations; the Lean MVP exposes them as read-only.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,7 +42,7 @@ public class TaxonomyService {
     @Transactional(readOnly = true)
     public CategoryResponse getCategory(UUID id) {
         return categoryRepo.findById(id)
-                .filter(c -> c.isActive())
+                .filter(RetentionCategory::isActive)
                 .map(this::toCategory)
                 .orElseThrow(() -> new CategoryNotFoundException(id.toString()));
     }
@@ -48,7 +51,7 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public Page<SubCategoryResponse> listSubCategories(String categoryCode, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("name"));
+        var pageable = PageRequest.of(page, size, Sort.by("name"));
         if (categoryCode != null && !categoryCode.isBlank()) {
             return subCategoryRepo
                     .findByCategoryCodeAndActiveTrue(categoryCode, pageable)
@@ -60,7 +63,7 @@ public class TaxonomyService {
     @Transactional(readOnly = true)
     public SubCategoryResponse getSubCategory(UUID id) {
         return subCategoryRepo.findById(id)
-                .filter(sc -> sc.isActive())
+                .filter(RetentionSubCategory::isActive)
                 .map(this::toSubCategory)
                 .orElseThrow(() -> new SubCategoryNotFoundException(id.toString()));
     }

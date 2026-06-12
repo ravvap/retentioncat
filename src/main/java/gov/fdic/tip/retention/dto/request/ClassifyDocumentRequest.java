@@ -9,13 +9,6 @@ import lombok.extern.jackson.Jacksonized;
 
 import java.time.LocalDate;
 
-/**
- * POST /v1/documents  – Pattern A
- *
- * Called by an upstream module (Examination Workflow, Case Management, etc.)
- * at the moment a business milestone triggers document retention.
- * The caller's module identity comes from the Azure AD JWT – not from this body.
- */
 @Value @Builder @Jacksonized
 @Schema(description = "Promote a document into TIP retention (Pattern A – US-1.13-Lean)")
 public class ClassifyDocumentRequest {
@@ -36,7 +29,7 @@ public class ClassifyDocumentRequest {
     Long sizeBytes;
 
     @Size(min = 64, max = 64)
-    @Schema(description = "SHA-256 hex digest of the file")
+    @Schema(description = "SHA-256 hex digest of the file content")
     String sha256;
 
     @NotBlank
@@ -46,10 +39,10 @@ public class ClassifyDocumentRequest {
 
     @NotNull
     @JsonFormat(pattern = "yyyy-MM-dd")
-    @Schema(description = "Business event date (e.g. date examination closed)",
+    @Schema(description = "Business event date (e.g. examination closed date)",
             example = "2026-05-29")
     LocalDate basisDate;
 
-    @Schema(description = "Azure Blob Storage URI of the document content")
+    @Schema(description = "Azure Blob Storage URI if content is already staged")
     String blobStorageUri;
 }

@@ -11,11 +11,11 @@ import java.util.UUID;
 @Value @Builder @Jacksonized
 @Schema(description = "Retention Category")
 public class CategoryResponse {
-    UUID           id;
-    String         code;
-    String         name;
-    String         description;
-    boolean        active;
+    UUID id;
+    String code;
+    String name;
+    String description;
+    boolean active;
     OffsetDateTime createdAt;
-    String         createdBy;
+    String createdBy;
 }

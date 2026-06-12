@@ -16,12 +16,17 @@ import java.time.OffsetDateTime;
 
 /**
  * US-1.Audit-Lean: Reconstruct retention history.
- * Unified archive covering both Pattern A and Pattern B events.
+ *
+ * Unified archive covering both Pattern A (DOCUMENT_CLASSIFIED) and
+ * Pattern B (RECORD_CLASSIFIED) events. Results are newest-first.
+ *
+ * Archive is permanent and immutable – DB RULES prevent UPDATE/DELETE.
  */
 @RestController
 @RequestMapping("/v1/audit-events")
 @RequiredArgsConstructor
-@Tag(name = "Audit Archive", description = "Permanent retention audit trail – US-1.Audit-Lean")
+@Tag(name = "Audit Archive",
+     description = "Permanent, immutable retention audit trail – US-1.Audit-Lean")
 public class AuditController {
 
     private final AuditService auditService;
@@ -30,8 +35,10 @@ public class AuditController {
     @Operation(
         summary   = "Search the permanent audit archive",
         security  = @SecurityRequirement(name = "bearerAuth"),
-        description = "All filters are optional and combinable. Results are newest-first. " +
-                      "Querying by category or sub-category returns events from ALL modules."
+        description = "All filters are optional and combinable. Results are newest-first, paginated.\n\n" +
+                      "**Pattern A events** have `classificationPattern=A`, populated `cmDocumentId`.\n\n" +
+                      "**Pattern B events** have `classificationPattern=B`, populated `tableSchema`, " +
+                      "`tableName`, `entityId`."
     )
     public Page<AuditEventResponse> search(
             @Parameter(description = "Filter by Category code, e.g. EXAM_RECORDS")
@@ -40,20 +47,20 @@ public class AuditController {
             @Parameter(description = "Filter by Sub-Category code, e.g. EXAM_FINDINGS_25Y")
             @RequestParam(required = false) String subCategoryCode,
 
-            @Parameter(description = "Filter by module code (Azure AD appid)")
+            @Parameter(description = "Filter by module code (Azure AD appid claim)")
             @RequestParam(required = false) String moduleCode,
 
             @Parameter(description = "DOCUMENT_CLASSIFIED | RECORD_CLASSIFIED | CLASSIFICATION_FAILED")
             @RequestParam(required = false) RetentionAuditEvent.EventType eventType,
 
-            @Parameter(description = "A | B")
+            @Parameter(description = "Classification pattern: A | B")
             @RequestParam(required = false) RetentionAuditEvent.ClassificationPattern classificationPattern,
 
-            @Parameter(description = "Events on or after this timestamp (ISO-8601)")
+            @Parameter(description = "Events on or after this ISO-8601 timestamp, e.g. 2026-01-01T00:00:00Z")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             @RequestParam(required = false) OffsetDateTime from,
 
-            @Parameter(description = "Events on or before this timestamp (ISO-8601)")
+            @Parameter(description = "Events on or before this ISO-8601 timestamp")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             @RequestParam(required = false) OffsetDateTime to,
 
@@ -62,6 +69,7 @@ public class AuditController {
 
         return auditService.search(
                 categoryCode, subCategoryCode, moduleCode,
-                eventType, classificationPattern, from, to, page, size);
+                eventType, classificationPattern,
+                from, to, page, size);
     }
 }

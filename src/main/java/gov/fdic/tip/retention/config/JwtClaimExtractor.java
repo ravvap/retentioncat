@@ -8,15 +8,13 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 
 /**
- * Helper used by services to extract the module identity from the current JWT.
+ * Extracts identity claims from the current Azure AD JWT.
  *
- * Azure AD tokens for service principals include an "appid" claim containing
- * the client application ID of the calling service. We use this as module_code
- * in audit events and idempotency checks – no lookup in a module table required.
+ * Azure AD service-principal tokens include:
+ *   "appid" – client application ID of the calling service (module identity)
+ *   "sub"   – subject (used as performed_by and @CreatedBy)
  *
- * Claim used (configurable via tip.security.module-claim):
- *   "appid"  – the client ID of the OAuth2 application (service-to-service)
- *   "sub"    – subject; used as fallback and for created_by auditing
+ * Claim name is configurable via tip.security.module-claim in application.yml.
  */
 @Component
 @Slf4j
@@ -25,15 +23,23 @@ public class JwtClaimExtractor {
     @Value("${tip.security.module-claim:appid}")
     private String moduleClaim;
 
-    /** Returns the module_code to store in audit rows and cm_documents. */
+    /**
+     * Returns the module_code to store in cm_documents and audit events.
+     * Reads the "appid" claim from the current JWT; falls back to "sub".
+     */
     public String getModuleCode() {
         Jwt jwt = currentJwt();
-        if (jwt == null) return "UNKNOWN";
+        if (jwt == null) {
+            log.warn("No JWT in SecurityContext – returning UNKNOWN as module_code");
+            return "UNKNOWN";
+        }
         String appId = jwt.getClaimAsString(moduleClaim);
-        return appId != null ? appId : jwt.getSubject();
+        return (appId != null && !appId.isBlank()) ? appId : jwt.getSubject();
     }
 
-    /** Returns the JWT subject (used for performed_by in audit events). */
+    /**
+     * Returns the JWT subject – used as performed_by in audit events.
+     */
     public String getSubject() {
         Jwt jwt = currentJwt();
         return jwt != null ? jwt.getSubject() : "UNKNOWN";
